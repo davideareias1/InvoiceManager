@@ -1,10 +1,10 @@
-# E-Rechnung Rechnungsmanager - Technical Documentation
+# InvoiceManager - Technical Documentation
 
-This document provides technical details about the E-Rechnung Rechnungsmanager application, including its architecture, code organization, and customization options.
+This document provides technical details about the InvoiceManager application, including its architecture, code organization, and customization options.
 
 ## Architecture Overview
 
-E-Rechnung Rechnungsmanager is a client-side Next.js application with the following key components:
+InvoiceManager is a client-side Next.js application with the following key components:
 
 1. **UI Layer**: React components built with Tailwind CSS and Radix UI primitives
 2. **State Management**: React Context API for global state management
@@ -27,7 +27,7 @@ E-Rechnung Rechnungsmanager is a client-side Next.js application with the follow
 The project follows a standard Next.js app directory structure:
 
 ```
-e-rechnung-nextjs/
+InvoiceManager/
 ├── public/              # Static assets
 ├── src/                 # Source code
 │   ├── app/             # Next.js app router structure
@@ -245,8 +245,8 @@ EXPOSE 3000
 
 2. Build and run:
 ```bash
-docker build -t e-rechnung .
-docker run -p 3000:3000 e-rechnung
+docker build -t invoicemanager .
+docker run -p 3000:3000 invoicemanager
 ```
 
 ## Future Development

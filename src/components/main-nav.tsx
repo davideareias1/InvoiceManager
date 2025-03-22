@@ -15,7 +15,7 @@ export function MainNav() {
                 {/* Logo and App Name */}
                 <Link href="/" className="mr-6 flex items-center space-x-2">
                     <FileText className="h-6 w-6" />
-                    <span className="hidden font-bold sm:inline-block">E-Rechnung</span>
+                    <span className="hidden font-bold sm:inline-block">InvoiceManager</span>
                 </Link>
 
                 {/* Navigation Links */}

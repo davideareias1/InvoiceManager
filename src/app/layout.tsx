@@ -9,7 +9,7 @@ import { Toaster } from '@/components/ui/toaster'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-    title: 'E-Rechnung Invoice Manager',
+    title: 'InvoiceManager',
     description: 'Manage your invoices efficiently',
 }
 
@@ -32,7 +32,7 @@ export default function RootLayout({
                             <main className="flex-1 container py-6">{children}</main>
                             <footer className="border-t py-4 bg-white/80 backdrop-blur-sm">
                                 <div className="container flex flex-col md:flex-row justify-between items-center text-sm text-muted-foreground">
-                                    <p>E-Rechnung Invoice Manager</p>
+                                    <p>InvoiceManager</p>
                                     <p>© {new Date().getFullYear()} All rights reserved</p>
                                 </div>
                             </footer>

@@ -1,12 +1,12 @@
-# E-Rechnung Rechnungsmanager
+# InvoiceManager
 
-![E-Rechnung Manager Logo](assets/eingangsrechnungen.png)
+![InvoiceManager Logo](assets/eingangsrechnungen.png)
 
 A modern, browser-based invoice management system for creating, managing, and analyzing electronic invoices. Built with Next.js, TypeScript, and Tailwind CSS.
 
 ## Overview
 
-E-Rechnung Rechnungsmanager is a comprehensive solution for small businesses and freelancers to manage their invoicing workflow. The application provides a user-friendly interface for creating, storing, and analyzing invoices, with built-in support for managing customers, products, and company information.
+InvoiceManager is a comprehensive solution for small businesses and freelancers to manage their invoicing workflow. The application provides a user-friendly interface for creating, storing, and analyzing invoices, with built-in support for managing customers, products, and company information.
 
 ## Features
 
@@ -50,13 +50,12 @@ E-Rechnung Rechnungsmanager is a comprehensive solution for small businesses and
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/e-rechnung-rechnungsmanager.git
-   cd e-rechnung-rechnungsmanager
+   git clone https://github.com/yourusername/InvoiceManager.git
+   cd InvoiceManager
    ```
 
 2. Install dependencies:
    ```bash
-   cd e-rechnung-nextjs
    npm install
    # or
    yarn install
@@ -149,5 +148,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ---
-
-Built with ❤️ using [Next.js](https://nextjs.org/) and [Tailwind CSS](https://tailwindcss.com/) 
