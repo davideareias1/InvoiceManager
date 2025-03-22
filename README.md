@@ -1,7 +1,5 @@
 # InvoiceManager
 
-![InvoiceManager Logo](assets/eingangsrechnungen.png)
-
 A modern, browser-based invoice management system for creating, managing, and analyzing electronic invoices. Built with Next.js, TypeScript, and Tailwind CSS.
 
 ## Overview
