@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { CustomerData } from '../app/interfaces';
-import { SavedCustomer, loadCustomers, loadCustomersSync, saveCustomer, searchCustomers } from '../app/utils/customerUtils';
+import { CustomerData } from '../interfaces';
+import { SavedCustomer, loadCustomers, loadCustomersSync, saveCustomer, searchCustomers } from '../utils/customerUtils';
 import { Button } from './ui/button';
 import { Search, UserPlus, Check, X, Save, UserX } from 'lucide-react';
-import { showSuccess } from '../app/utils/notifications';
+import { showSuccess } from '../utils/notifications';
 
 interface CustomerSelectorProps {
     currentCustomer: CustomerData;

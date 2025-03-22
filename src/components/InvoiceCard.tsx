@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, FileText, Mail, Trash2, Download, Eye } from 'lucide-react';
-import { formatCurrency, formatDate } from '@/app/utils/formatters';
-import { Invoice } from '@/app/interfaces';
+import { formatCurrency, formatDate } from '@/utils/formatters';
+import { Invoice } from '@/interfaces';
 import { cn } from '@/lib/utils';
 import {
     Tooltip,
@@ -21,7 +21,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { showConfirmation } from '@/app/utils/notifications';
+import { showConfirmation } from '@/utils/notifications';
 import { Badge } from '@/components/ui/badge';
 
 interface InvoiceCardProps {

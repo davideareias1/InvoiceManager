@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ProductData } from '../app/interfaces';
+import { ProductData } from '../interfaces';
 import { Search, Plus, Check, X, Save, PackageX } from 'lucide-react';
 import { Button } from './ui/button';
-import { SavedProduct, loadProducts, loadProductsSync, saveProduct, searchProducts } from '../app/utils/productUtils';
-import { formatAmount } from '../app/utils/moneyUtils';
-import { showSuccess } from '../app/utils/notifications';
+import { SavedProduct, loadProducts, loadProductsSync, saveProduct, searchProducts } from '../utils/productUtils';
+import { formatAmount } from '../utils/moneyUtils';
+import { showSuccess } from '../utils/notifications';
 
 interface ProductSelectorProps {
     selectedProduct: ProductData;

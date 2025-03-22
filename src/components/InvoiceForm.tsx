@@ -15,12 +15,12 @@ import {
     getBankDetails,
     saveIssuerData,
     saveBankDetails
-} from '../app/utils/invoiceUtils';
-import { InvoiceItem, CustomerData, IssuerData, BankDetails, Invoice } from '../app/interfaces';
-import { useFileSystem } from '../app/contexts/FileSystemContext';
-import { useCompany } from '../app/contexts/CompanyContext';
+} from '../utils/invoiceUtils';
+import { InvoiceItem, CustomerData, IssuerData, BankDetails, Invoice } from '../interfaces';
+import { useFileSystem } from '../contexts/FileSystemContext';
+import { useCompany } from '../contexts/CompanyContext';
 import { v4 as uuidv4 } from 'uuid';
-import { showSuccess, showError, showLoading } from '../app/utils/notifications';
+import { showSuccess, showError, showLoading } from '../utils/notifications';
 import { FormInput } from './ui/form-input';
 import { Separator } from './ui/separator';
 import { CustomerSelector } from './CustomerSelector';

@@ -8,14 +8,14 @@ import { Input } from '../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Checkbox } from '../../components/ui/checkbox';
 import { Label } from '../../components/ui/label';
-import { searchInvoices, getMonthlyTotals } from '../utils/invoiceUtils';
-import { generateInvoicePDF } from '../utils/pdfUtils';
-import { Invoice } from '../interfaces';
+import { searchInvoices, getMonthlyTotals } from '../../utils/invoiceUtils';
+import { generateInvoicePDF } from '../../utils/pdfUtils';
+import { Invoice } from '../../interfaces';
 import { PlusCircle, Download, Trash, Search, FileText, AlertCircle, FolderOpen, Clock, X, CheckCircle, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
 import { format } from 'date-fns';
-import { useFileSystem } from '../contexts/FileSystemContext';
-import { useCompany } from '../contexts/CompanyContext';
-import { showConfirmation, showError, showSuccess, showLoading } from '../utils/notifications';
+import { useFileSystem } from '../../contexts/FileSystemContext';
+import { useCompany } from '../../contexts/CompanyContext';
+import { showConfirmation, showError, showSuccess, showLoading } from '../../utils/notifications';
 
 // Type for sorting options
 type SortField = 'invoice_number' | 'invoice_date' | 'customer.name' | 'total';

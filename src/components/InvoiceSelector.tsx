@@ -3,12 +3,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import { Search, Check, Trash2 } from 'lucide-react';
-import { SavedInvoice, deleteInvoice, loadInvoices, loadInvoicesSync, searchInvoices } from '../app/utils/invoiceUtils';
+import { SavedInvoice, deleteInvoice, loadInvoices, loadInvoicesSync, searchInvoices } from '../utils/invoiceUtils';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
-import { formatDateStringShort } from '../app/utils/dateUtils';
-import { formatAmount } from '../app/utils/moneyUtils';
+import { formatDateStringShort } from '../utils/dateUtils';
+import { formatAmount } from '../utils/moneyUtils';
 import { Badge } from './ui/badge';
-import { showError, showSuccess } from '../app/utils/notifications';
+import { showError, showSuccess } from '../utils/notifications';
 
 interface InvoiceSelectorProps {
     onSelect: (invoice: SavedInvoice) => void;

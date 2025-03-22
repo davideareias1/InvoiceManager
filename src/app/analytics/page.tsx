@@ -2,13 +2,13 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { useFileSystem } from '../contexts/FileSystemContext';
-import { Invoice } from '../interfaces';
+import { useFileSystem } from '../../contexts/FileSystemContext';
+import { Invoice } from '../../interfaces';
 import { format, subMonths, isAfter, parseISO } from 'date-fns';
 
 import { Clock, FolderOpen, BarChart2, PieChart, LayoutGrid, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { showSuccess } from '../utils/notifications';
+import { showSuccess } from '../../utils/notifications';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';

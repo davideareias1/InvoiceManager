@@ -1,71 +1,71 @@
 'use client';
 
 import { Invoice, CompanyInfo } from '../interfaces';
-import { formatCurrency, formatDate } from '@/app/utils/formatters';
+import { formatCurrency, formatDate } from '@/utils/formatters';
 
 /**
  * Interface for email sending options
  */
 interface SendEmailOptions {
-    to: string;
-    cc?: string;
-    bcc?: string;
-    subject: string;
-    body: string;
-    attachmentData?: Blob;
-    attachmentName?: string;
+  to: string;
+  cc?: string;
+  bcc?: string;
+  subject: string;
+  body: string;
+  attachmentData?: Blob;
+  attachmentName?: string;
 }
 
 /**
  * Send an invoice via email using the device's mail client
  */
 export async function sendInvoiceEmail(
-    invoice: Invoice,
-    companyInfo: CompanyInfo,
-    pdfBlob?: Blob
+  invoice: Invoice,
+  companyInfo: CompanyInfo,
+  pdfBlob?: Blob
 ): Promise<boolean> {
-    try {
-        // Generate email subject
-        const subject = `Rechnung #${invoice.invoice_number} von ${companyInfo.name}`;
+  try {
+    // Generate email subject
+    const subject = `Rechnung #${invoice.invoice_number} von ${companyInfo.name}`;
 
-        // Generate email body
-        const body = generateEmailBody(invoice, companyInfo);
+    // Generate email body
+    const body = generateEmailBody(invoice, companyInfo);
 
-        // Prepare email options
-        const emailOptions: SendEmailOptions = {
-            to: invoice.client_email || '',
-            subject,
-            body
-        };
+    // Prepare email options
+    const emailOptions: SendEmailOptions = {
+      to: invoice.client_email || '',
+      subject,
+      body
+    };
 
-        // Attach PDF if provided
-        if (pdfBlob) {
-            emailOptions.attachmentData = pdfBlob;
-            emailOptions.attachmentName = `Rechnung_${invoice.invoice_number}.pdf`;
-        }
-
-        // Send the email
-        return await sendEmail(emailOptions);
-    } catch (error) {
-        console.error('Error sending invoice email:', error);
-        return false;
+    // Attach PDF if provided
+    if (pdfBlob) {
+      emailOptions.attachmentData = pdfBlob;
+      emailOptions.attachmentName = `Rechnung_${invoice.invoice_number}.pdf`;
     }
+
+    // Send the email
+    return await sendEmail(emailOptions);
+  } catch (error) {
+    console.error('Error sending invoice email:', error);
+    return false;
+  }
 }
 
 /**
  * Generate HTML email body for an invoice
  */
 function generateEmailBody(invoice: Invoice, companyInfo: CompanyInfo): string {
-    // Calculate totals
-    const subtotal = invoice.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
-    const taxRate = invoice.tax_rate || 0;
-    const taxAmount = subtotal * (taxRate / 100);
-    const total = subtotal + taxAmount;
+  // Calculate totals
+  const subtotal = invoice.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+  const taxRate = invoice.tax_rate || 0;
+  const taxAmount = subtotal * (taxRate / 100);
+  const total = subtotal + taxAmount;
 
-    // Format the invoice due date for display
-    const formattedDueDate = formatDate(invoice.due_date || '');
+  // Format the invoice due date for display
+  const formattedDueDate = formatDate(invoice.due_date || '');
 
-    return `
+  return `
     <html>
       <head>
         <style>
@@ -129,8 +129,8 @@ function generateEmailBody(invoice: Invoice, companyInfo: CompanyInfo): string {
             <p><strong>Fälligkeitsdatum:</strong> ${formattedDueDate}</p>
             <p class="total"><strong>Gesamtbetrag:</strong> ${formatCurrency(total)}</p>
             ${companyInfo.registration_number ?
-            `<p><strong>Leitweg-ID:</strong> ${companyInfo.registration_number}</p>` :
-            ''}
+      `<p><strong>Leitweg-ID:</strong> ${companyInfo.registration_number}</p>` :
+      ''}
           </div>
           
           <div class="payment-info">
@@ -171,26 +171,26 @@ function generateEmailBody(invoice: Invoice, companyInfo: CompanyInfo): string {
  * Send an email using the device's mail client
  */
 async function sendEmail(options: SendEmailOptions): Promise<boolean> {
-    try {
-        // Create a mailto URL
-        let mailtoUrl = `mailto:${options.to}`;
+  try {
+    // Create a mailto URL
+    let mailtoUrl = `mailto:${options.to}`;
 
-        if (options.cc) mailtoUrl += `?cc=${options.cc}`;
-        if (options.bcc) mailtoUrl += `${mailtoUrl.includes('?') ? '&' : '?'}bcc=${options.bcc}`;
-        mailtoUrl += `${mailtoUrl.includes('?') ? '&' : '?'}subject=${encodeURIComponent(options.subject)}`;
+    if (options.cc) mailtoUrl += `?cc=${options.cc}`;
+    if (options.bcc) mailtoUrl += `${mailtoUrl.includes('?') ? '&' : '?'}bcc=${options.bcc}`;
+    mailtoUrl += `${mailtoUrl.includes('?') ? '&' : '?'}subject=${encodeURIComponent(options.subject)}`;
 
-        // For security reasons, we can't actually attach the file programmatically in most browsers
-        // Instead, we'll open the default mail client with the mailto link and let the user attach the PDF
+    // For security reasons, we can't actually attach the file programmatically in most browsers
+    // Instead, we'll open the default mail client with the mailto link and let the user attach the PDF
 
-        // Open the mail client
-        window.open(mailtoUrl, '_blank');
+    // Open the mail client
+    window.open(mailtoUrl, '_blank');
 
-        // Show a success message
-        alert('Your default email client has been opened. Please attach the downloaded PDF file to the email.');
+    // Show a success message
+    alert('Your default email client has been opened. Please attach the downloaded PDF file to the email.');
 
-        return true;
-    } catch (error) {
-        console.error('Error sending email:', error);
-        return false;
-    }
+    return true;
+  } catch (error) {
+    console.error('Error sending email:', error);
+    return false;
+  }
 } 

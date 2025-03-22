@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import { FileSystemProvider } from './contexts/FileSystemContext'
-import { CompanyProvider } from './contexts/CompanyContext'
+import { FileSystemProvider } from '../contexts/FileSystemContext'
+import { CompanyProvider } from '../contexts/CompanyContext'
 import { MainNav } from '@/components/main-nav'
 import { Toaster } from '@/components/ui/toaster'
 

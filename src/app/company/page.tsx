@@ -1,14 +1,14 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { useCompany } from '../contexts/CompanyContext';
+import { useCompany } from '../../contexts/CompanyContext';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { showSuccess, showError } from '../utils/notifications';
+import { showSuccess, showError } from '../../utils/notifications';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { UploadCloud, Building, FileText, CreditCard, X, AlertCircle, Info, Save, RefreshCw } from 'lucide-react';

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { InvoiceForm } from '../../components/InvoiceForm';
-import { useFileSystem } from '../contexts/FileSystemContext';
+import { useFileSystem } from '../../contexts/FileSystemContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { FileText, ShieldAlert, AlertTriangle } from 'lucide-react';

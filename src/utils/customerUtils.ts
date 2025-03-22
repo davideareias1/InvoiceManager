@@ -1,6 +1,6 @@
 'use client';
 
-import { CustomerData } from '../interfaces';
+import { CustomerData } from '../interfaces/index';
 import { v4 as uuidv4 } from 'uuid';
 import { saveCustomerToFile, loadCustomersFromFiles, deleteCustomerFile } from './fileSystemStorage';
 
