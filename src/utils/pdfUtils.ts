@@ -153,21 +153,22 @@ function addSimpleTable(doc: jsPDF, items: InvoiceItem[]): void {
         // Split text to fit within width
         const wrappedText = doc.splitTextToSize(descriptionText, descriptionWidth);
 
-        // Print each line of wrapped text
+        // Print each line of wrapped text with proper spacing
         wrappedText.forEach((line: string, lineIndex: number) => {
             doc.text(line, PDF_MARGIN_LEFT + 15, y + (lineIndex * 5));
         });
 
-        // Determine the tallest description to adjust y position later
+        // Determine the height of the description to adjust y position
         const lineHeight = wrappedText.length * 5;
 
+        // Position quantity, prices at the first line height
         doc.text(item.quantity.toString(), PDF_MARGIN_LEFT + 100, y);
         doc.text(formatCurrency(item.price), PDF_MARGIN_LEFT + 130, y);
         const itemTotal = item.quantity * item.price;
         doc.text(formatCurrency(itemTotal), PDF_MARGIN_LEFT + 160, y);
 
-        // Adjust y based on the number of lines in the description
-        y += Math.max(10, lineHeight + 2); // At least 10mm spacing or more if needed for wrapped text
+        // Adjust y based on the number of lines in the description plus spacing
+        y += Math.max(10, lineHeight + 5); // At least 10mm spacing or more if needed for wrapped text
     });
 
     // Draw a line at the bottom
@@ -200,8 +201,19 @@ function addTotalsSimple(doc: jsPDF, invoice: Invoice, companyInfo: CompanyInfo,
     // Add payment terms information aligned with amounts on right side 
     doc.text('Zahlungsbedingungen:', rightColumnX, y);
     y += 5;
-    doc.text('Zahlbar innerhalb von 14 Tagen nach Rechnungserhalt ohne Abzug', rightColumnX, y);
-    y += 10;
+
+    // Wrap payment terms text to fit in the column width
+    const paymentTermsWidth = doc.internal.pageSize.width - PDF_MARGIN_RIGHT - rightColumnX;
+    const paymentTermsText = 'Zahlbar innerhalb von 14 Tagen nach Rechnungserhalt ohne Abzug';
+    const wrappedPaymentTerms = doc.splitTextToSize(paymentTermsText, paymentTermsWidth);
+
+    // Print each line of wrapped payment terms
+    wrappedPaymentTerms.forEach((line: string, index: number) => {
+        doc.text(line, rightColumnX, y + (index * 5));
+    });
+
+    // Adjust y position based on number of lines
+    y += (wrappedPaymentTerms.length * 5) + 5;
 
     // Netto (BT-106 Invoice total amount without VAT)
     doc.text('Nettobetrag:', rightColumnX, y);
@@ -228,7 +240,7 @@ function addTotalsSimple(doc: jsPDF, invoice: Invoice, companyInfo: CompanyInfo,
         });
 
         // Adjust y position based on number of lines
-        y += 5 * wrappedText.length;
+        y += (5 * wrappedText.length) + 2;
     }
 
     // Draw line
