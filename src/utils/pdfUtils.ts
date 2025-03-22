@@ -44,10 +44,10 @@ export async function generateInvoicePDF(
         // Add billing info
         addBillingInfo(doc, invoice);
 
-        // Add invoice header
+        // Add invoice header - move the position down to prevent overlapping
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(16);
-        doc.text(`Rechnung #${invoice.invoice_number}`, PDF_MARGIN_LEFT, 70);
+        doc.text(`Rechnung #${invoice.invoice_number}`, doc.internal.pageSize.width - PDF_MARGIN_RIGHT - 80, 70, { align: 'left' });
 
         // Add XRechnung 2025 required fields 
         doc.setFont('helvetica', 'normal');
@@ -142,13 +142,32 @@ function addSimpleTable(doc: jsPDF, items: InvoiceItem[]): void {
 
     items.forEach((item, index) => {
         doc.text((index + 1).toString(), PDF_MARGIN_LEFT, y);
-        doc.text(item.name, PDF_MARGIN_LEFT + 15, y);
+
+        // Handle item name with line breaks
+        // Limit width for description text to prevent overlap with the next column
+        const descriptionWidth = PDF_MARGIN_LEFT + 80 - (PDF_MARGIN_LEFT + 15);
+
+        // Use item description if available, otherwise use item name
+        let descriptionText = item.description || item.name;
+
+        // Split text to fit within width
+        const wrappedText = doc.splitTextToSize(descriptionText, descriptionWidth);
+
+        // Print each line of wrapped text
+        wrappedText.forEach((line: string, lineIndex: number) => {
+            doc.text(line, PDF_MARGIN_LEFT + 15, y + (lineIndex * 5));
+        });
+
+        // Determine the tallest description to adjust y position later
+        const lineHeight = wrappedText.length * 5;
+
         doc.text(item.quantity.toString(), PDF_MARGIN_LEFT + 100, y);
         doc.text(formatCurrency(item.price), PDF_MARGIN_LEFT + 130, y);
         const itemTotal = item.quantity * item.price;
         doc.text(formatCurrency(itemTotal), PDF_MARGIN_LEFT + 160, y);
 
-        y += 10;
+        // Adjust y based on the number of lines in the description
+        y += Math.max(10, lineHeight + 2); // At least 10mm spacing or more if needed for wrapped text
     });
 
     // Draw a line at the bottom
