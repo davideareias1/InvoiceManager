@@ -197,9 +197,10 @@ function addTotalsSimple(doc: jsPDF, invoice: Invoice, companyInfo: CompanyInfo,
 
     let y = yPos;
 
-    // Add payment terms information (BG-20, mandatory in XRechnung 2025)
-    doc.text('Zahlungsbedingungen:', PDF_MARGIN_LEFT, y);
-    doc.text('Zahlbar innerhalb von 14 Tagen nach Rechnungserhalt ohne Abzug', PDF_MARGIN_LEFT + 40, y);
+    // Add payment terms information aligned with amounts on right side 
+    doc.text('Zahlungsbedingungen:', rightColumnX, y);
+    y += 5;
+    doc.text('Zahlbar innerhalb von 14 Tagen nach Rechnungserhalt ohne Abzug', rightColumnX, y);
     y += 10;
 
     // Netto (BT-106 Invoice total amount without VAT)
