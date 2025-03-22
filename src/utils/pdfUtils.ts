@@ -408,6 +408,12 @@ function addCompanyInfo(doc: jsPDF, companyInfo: CompanyInfo): void {
         y += 5;
     }
 
+    // Add tax number (Steuernummer)
+    if (companyInfo.tax_number) {
+        doc.text(`Steuernummer: ${companyInfo.tax_number}`, PDF_MARGIN_LEFT, y);
+        y += 5;
+    }
+
     // Add registration information (BT-30)
     if (companyInfo.trade_register) {
         doc.text(`Handelsregister: ${companyInfo.trade_register}`, PDF_MARGIN_LEFT, y);
@@ -486,6 +492,10 @@ function addFooter(doc: jsPDF, companyInfo: CompanyInfo, invoice: Invoice): void
 
     if (companyInfo.tax_id) {
         footerText += `USt-IdNr.: ${companyInfo.tax_id} • `;
+    }
+
+    if (companyInfo.tax_number) {
+        footerText += `Steuernummer: ${companyInfo.tax_number} • `;
     }
 
     if (companyInfo.registration_number) {

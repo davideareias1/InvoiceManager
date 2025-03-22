@@ -11,6 +11,7 @@ const DEFAULT_COMPANY_INFO: CompanyInfo = {
     email: '',
     website: '',
     tax_id: '',
+    tax_number: '',
     registration_number: '',
     trade_register: '',
     electronic_address: '',

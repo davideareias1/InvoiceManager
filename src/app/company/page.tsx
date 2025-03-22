@@ -197,6 +197,17 @@ export default function CompanyPage() {
                                 </div>
 
                                 <div className="space-y-2">
+                                    <Label htmlFor="tax_number">Steuernummer</Label>
+                                    <Input
+                                        id="tax_number"
+                                        name="tax_number"
+                                        value={companyInfo.tax_number}
+                                        onChange={handleChange}
+                                        placeholder="Your German tax number (Steuernummer)"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
                                     <div className="flex items-center gap-1.5">
                                         <Label htmlFor="registration_number">Leitweg-ID (for XRechnung)</Label>
                                         <TooltipProvider>

@@ -67,6 +67,7 @@ export interface CompanyInfo {
     email: string;
     website: string;
     tax_id: string;
+    tax_number: string;
     registration_number: string;
     trade_register: string;
     electronic_address: string;
