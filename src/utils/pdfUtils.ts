@@ -281,7 +281,7 @@ function addPaymentInfoSimple(doc: jsPDF, companyInfo: CompanyInfo, invoice: Inv
     }
 
     if (companyInfo.account_name) {
-        doc.text(`Kontoinhaber: ${companyInfo.account_name}`, PDF_MARGIN_LEFT, y);
+        doc.text(`Kontoinhaber: ${companyInfo.is_freelancer && companyInfo.full_name ? companyInfo.full_name : companyInfo.account_name}`, PDF_MARGIN_LEFT, y);
         y += 5;
     }
 
@@ -383,12 +383,31 @@ function addCompanyInfo(doc: jsPDF, companyInfo: CompanyInfo): void {
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    doc.text(companyInfo.name, PDF_MARGIN_LEFT, startY);
+
+    // Add freelancer's full name if applicable
+    if (companyInfo.is_freelancer && companyInfo.full_name) {
+        doc.text(companyInfo.full_name, PDF_MARGIN_LEFT, startY);
+
+        // Only show company name on the next line if it exists
+        if (companyInfo.name) {
+            doc.setFont('helvetica', 'normal');
+            doc.text(companyInfo.name, PDF_MARGIN_LEFT, startY + 5);
+            doc.setFont('helvetica', 'bold'); // Reset font for consistency
+
+            // Start the rest of the info 10mm down
+            var y = startY + 10;
+        } else {
+            // If no company name, start 5mm down
+            var y = startY + 5;
+        }
+    } else {
+        // Standard company display
+        doc.text(companyInfo.name, PDF_MARGIN_LEFT, startY);
+        var y = startY + 5;
+    }
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-
-    let y = startY + 5;
 
     // Add address (BT-35, BT-37, BT-38 Seller address)
     if (companyInfo.address) {

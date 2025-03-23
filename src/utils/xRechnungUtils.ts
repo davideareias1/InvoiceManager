@@ -87,7 +87,9 @@ export function generateXRechnungJSON(invoice: Invoice, companyInfo: CompanyInfo
             // BG-4: SELLER (mandatory group)
             "seller": {
                 // BT-27: Seller name (mandatory)
-                "name": companyInfo.name,
+                "name": companyInfo.is_freelancer && companyInfo.full_name
+                    ? `${companyInfo.full_name}${companyInfo.name ? ` - ${companyInfo.name}` : ''}`
+                    : companyInfo.name,
 
                 // BT-31: Seller VAT identifier (mandatory if VAT registered)
                 "vatIdentifier": companyInfo.is_vat_enabled ? companyInfo.tax_id : "",
@@ -111,7 +113,9 @@ export function generateXRechnungJSON(invoice: Invoice, companyInfo: CompanyInfo
 
                 // BT-41: Seller contact point 
                 "contact": {
-                    "name": companyInfo.name,
+                    "name": companyInfo.is_freelancer && companyInfo.full_name
+                        ? companyInfo.full_name
+                        : companyInfo.name,
                     "telephone": companyInfo.phone,
                     "email": companyInfo.email
                 }

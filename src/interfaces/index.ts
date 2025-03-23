@@ -79,6 +79,8 @@ export interface CompanyInfo {
     logo_url: string;
     is_vat_enabled: boolean;
     default_tax_rate: number;
+    is_freelancer?: boolean;
+    full_name?: string;
 }
 
 export enum InvoiceStatus {

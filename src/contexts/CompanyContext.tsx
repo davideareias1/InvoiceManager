@@ -22,7 +22,9 @@ const DEFAULT_COMPANY_INFO: CompanyInfo = {
     swift_bic: '',
     logo_url: '',
     is_vat_enabled: true,  // VAT is enabled by default
-    default_tax_rate: 19   // Default to standard German VAT rate
+    default_tax_rate: 19,   // Default to standard German VAT rate
+    is_freelancer: false,  // Default to company mode
+    full_name: ''          // Empty by default
 };
 
 // Local storage key

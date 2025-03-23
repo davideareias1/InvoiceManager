@@ -123,6 +123,52 @@ export default function CompanyPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
+                            <div className="bg-slate-50 p-4 rounded-lg mb-4">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="space-y-0.5">
+                                        <Label htmlFor="is_freelancer" className="text-base">I am a freelancer</Label>
+                                        <p className="text-sm text-muted-foreground">
+                                            Enable if you're operating as a sole proprietor/freelancer rather than a registered company
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        id="is_freelancer"
+                                        checked={companyInfo.is_freelancer || false}
+                                        onCheckedChange={(checked) => {
+                                            // Update is_freelancer status
+                                            updateCompanyInfo({ is_freelancer: checked });
+
+                                            // If enabling freelancer mode and full name exists, set account_name to full_name
+                                            if (checked && companyInfo.full_name) {
+                                                updateCompanyInfo({ account_name: companyInfo.full_name });
+                                            }
+                                        }}
+                                    />
+                                </div>
+
+                                {companyInfo.is_freelancer && (
+                                    <div className="space-y-2 max-w-md">
+                                        <Label htmlFor="full_name">Full Name</Label>
+                                        <Input
+                                            id="full_name"
+                                            name="full_name"
+                                            value={companyInfo.full_name || ''}
+                                            onChange={(e) => {
+                                                const newFullName = e.target.value;
+                                                // Update the full_name field
+                                                handleChange(e);
+
+                                                // Also update account_name if in freelancer mode
+                                                if (companyInfo.is_freelancer) {
+                                                    updateCompanyInfo({ account_name: newFullName });
+                                                }
+                                            }}
+                                            placeholder="Your full name (will appear before company name)"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label htmlFor="name">Company Name</Label>
