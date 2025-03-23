@@ -16,6 +16,7 @@ import { format } from 'date-fns';
 import { useFileSystem } from '../../contexts/FileSystemContext';
 import { useCompany } from '../../contexts/CompanyContext';
 import { showConfirmation, showError, showSuccess, showLoading } from '../../utils/notifications';
+import { generateXRechnungJSON } from '../../utils/xRechnungUtils';
 
 // Type for sorting options
 type SortField = 'invoice_number' | 'invoice_date' | 'customer.name' | 'total';
@@ -362,14 +363,31 @@ export default function Invoices() {
 
     // Download invoice as JSON
     const handleDownloadJSON = (invoice: Invoice) => {
-        const jsonData = JSON.stringify(invoice, null, 2);
-        const blob = new Blob([jsonData], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `invoice-${invoice.invoice_number}.json`;
-        link.click();
-        URL.revokeObjectURL(url);
+        try {
+            // Generate XRechnung-compliant JSON
+            const xRechnungData = generateXRechnungJSON(invoice, companyInfo);
+            const jsonData = JSON.stringify(xRechnungData, null, 2);
+
+            // Create download blob
+            const blob = new Blob([jsonData], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+
+            // Create and click download link
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `xrechnung-${invoice.invoice_number}.json`;
+            document.body.appendChild(link);
+            link.click();
+
+            // Clean up
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            showSuccess("XRechnung JSON generated successfully");
+        } catch (error) {
+            console.error("Error generating XRechnung JSON:", error);
+            showError("Failed to generate XRechnung JSON");
+        }
     };
 
     return (
@@ -700,7 +718,7 @@ export default function Invoices() {
                                                         variant="outline"
                                                         size="sm"
                                                         onClick={() => handleDownloadJSON(invoice)}
-                                                        title="Download JSON"
+                                                        title="Download XRechnung JSON"
                                                         className="h-8 w-8 p-0"
                                                     >
                                                         <Download className="h-4 w-4" />
