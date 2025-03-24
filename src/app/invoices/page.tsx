@@ -9,14 +9,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Checkbox } from '../../components/ui/checkbox';
 import { Label } from '../../components/ui/label';
 import { searchInvoices, getMonthlyTotals } from '../../utils/invoiceUtils';
-import { generateInvoicePDF } from '../../utils/pdfUtils';
+import { generateInvoicePDF } from '@/utils/pdfUtils';
 import { Invoice } from '../../interfaces';
 import { PlusCircle, Download, Trash, Search, FileText, AlertCircle, FolderOpen, Clock, X, CheckCircle, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { useFileSystem } from '../../contexts/FileSystemContext';
 import { useCompany } from '../../contexts/CompanyContext';
 import { showConfirmation, showError, showSuccess, showLoading } from '../../utils/notifications';
-import { generateXRechnungJSON } from '../../utils/xRechnungUtils';
+import { formatDate, formatCurrency } from '@/utils/formatters';
 
 // Type for sorting options
 type SortField = 'invoice_number' | 'invoice_date' | 'customer.name' | 'total';
@@ -155,11 +155,6 @@ export default function Invoices() {
     const formatRefreshTime = () => {
         if (!lastRefreshed) return 'Never';
         return format(lastRefreshed, 'HH:mm:ss');
-    };
-
-    // Format currency
-    const formatCurrency = (value: number): string => {
-        return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
     };
 
     // Sorting function
@@ -336,57 +331,25 @@ export default function Invoices() {
     // Download invoice as PDF
     const handleDownloadPDF = async (invoice: Invoice) => {
         try {
-            const loadingToast = showLoading("Generating PDF...");
-            // Use the new PDF generation utility that supports XRechnung 2025
+            // Use the PDF generation utility
             const pdfBlob = await generateInvoicePDF(invoice, companyInfo);
-
-            // Create a URL for the blob
-            const url = URL.createObjectURL(pdfBlob);
-
+            
             // Create and click a download link
+            const url = URL.createObjectURL(pdfBlob);
             const link = document.createElement('a');
             link.href = url;
             link.download = `Rechnung_${invoice.invoice_number}.pdf`;
             document.body.appendChild(link);
             link.click();
-
+            
             // Clean up
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-
-            loadingToast.success("PDF generated successfully");
+            
+            showSuccess("PDF generated successfully");
         } catch (error) {
-            console.error("Error generating PDF:", error);
+            console.error("Failed to generate PDF:", error);
             showError("Failed to generate PDF");
-        }
-    };
-
-    // Download invoice as JSON
-    const handleDownloadJSON = (invoice: Invoice) => {
-        try {
-            // Generate XRechnung-compliant JSON
-            const xRechnungData = generateXRechnungJSON(invoice, companyInfo);
-            const jsonData = JSON.stringify(xRechnungData, null, 2);
-
-            // Create download blob
-            const blob = new Blob([jsonData], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-
-            // Create and click download link
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `xrechnung-${invoice.invoice_number}.json`;
-            document.body.appendChild(link);
-            link.click();
-
-            // Clean up
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-
-            showSuccess("XRechnung JSON generated successfully");
-        } catch (error) {
-            console.error("Error generating XRechnung JSON:", error);
-            showError("Failed to generate XRechnung JSON");
         }
     };
 
@@ -713,15 +676,6 @@ export default function Invoices() {
                                                         className="h-8 w-8 p-0"
                                                     >
                                                         <FileText className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => handleDownloadJSON(invoice)}
-                                                        title="Download XRechnung JSON"
-                                                        className="h-8 w-8 p-0"
-                                                    >
-                                                        <Download className="h-4 w-4" />
                                                     </Button>
                                                     <Button
                                                         variant="destructive"

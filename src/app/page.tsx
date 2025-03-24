@@ -4,14 +4,17 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileText, Settings, BarChart2, CheckCircle, XCircle, ArrowUpRight, HardDrive, Shield, Home, Users, PieChart } from 'lucide-react';
+import { FileText, Settings, BarChart2, CheckCircle, XCircle, ArrowUpRight, HardDrive, Shield, Home, Users, PieChart, Cloud } from 'lucide-react';
 import { useFileSystem } from '../contexts/FileSystemContext';
 import { useCompany } from '../contexts/CompanyContext';
+import { useGoogleDrive } from '../contexts/GoogleDriveContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format, parseISO, isThisMonth, isAfter, subMonths } from 'date-fns';
 import { ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
 import { Badge } from "@/components/ui/badge";
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
+import { showSuccess, showError } from '../utils/notifications';
 
 export default function HomePage() {
     const {
@@ -22,6 +25,16 @@ export default function HomePage() {
         invoices,
         loadInvoices
     } = useFileSystem();
+
+    const {
+        isSupported: isDriveSupported,
+        isInitialized: isDriveInitialized,
+        isAuthenticated: isDriveAuthenticated,
+        isBackupEnabled,
+        setIsBackupEnabled,
+        requestPermission: requestDrivePermission,
+        signOut: signOutDrive
+    } = useGoogleDrive();
 
     const { companyInfo } = useCompany();
 
@@ -118,6 +131,20 @@ export default function HomePage() {
         return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
     };
 
+    // Toggle Google Drive backup
+    const handleToggleBackup = async (enabled: boolean) => {
+        if (enabled && !isDriveAuthenticated) {
+            // Need to request permission first
+            const granted = await requestDrivePermission();
+            if (!granted) {
+                showError('Failed to authorize Google Drive access');
+                return;
+            }
+            showSuccess('Google Drive backup enabled');
+        }
+        setIsBackupEnabled(enabled);
+    };
+
     // Colors for charts
     const COLORS = ['#16a34a', '#f43f5e', '#3b82f6', '#f97316'];
 
@@ -136,22 +163,38 @@ export default function HomePage() {
                 </Button>
             </div>
 
-            {(!isSupported || !hasPermission) && (
-                <Card className={`${!isSupported ? 'border-red-300 bg-red-50' : 'border-amber-300 bg-amber-50'}`}>
+            {/* Storage Cards - show options for local storage and Google Drive backup */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Local Storage Card */}
+                <Card className={`${!isSupported ? 'border-red-300 bg-red-50' : (!hasPermission ? 'border-amber-300 bg-amber-50' : '')}`}>
                     <CardHeader className="pb-2">
                         <CardTitle className="text-base flex gap-2 items-center">
-                            <Shield className="h-5 w-5 text-amber-600" />
-                            {!isSupported ? 'Browser Compatibility Issue' : 'Storage Access Required'}
+                            <HardDrive className="h-5 w-5 text-slate-600" />
+                            {!isSupported ? 'Browser Compatibility Issue' : 'Local Storage Access'}
                         </CardTitle>
+                        <CardDescription>
+                            {!isSupported
+                                ? "Your browser doesn't support the File System API"
+                                : "Store invoices securely on your device"}
+                        </CardDescription>
                     </CardHeader>
                     <CardContent className="pb-3">
-                        <p className="text-sm">
+                        <p className="text-sm mb-3">
                             {!isSupported
-                                ? "Your browser doesn't support the File System API. For the best experience, we recommend using Chrome or Microsoft Edge."
-                                : "To manage your invoices, this app needs permission to access file storage."}
+                                ? "For the best experience, we recommend using Chrome or Microsoft Edge."
+                                : hasPermission
+                                    ? "You have granted access to store files in your selected folder."
+                                    : "To manage your invoices, this app needs permission to access file storage."}
                         </p>
+                        {isSupported && (
+                            <div className="flex items-center space-x-2">
+                                <Badge variant={hasPermission ? "outline" : "outline"} className={`font-normal ${hasPermission ? "bg-green-100 text-green-800" : ""}`}>
+                                    {hasPermission ? 'Access Granted' : 'Access Required'}
+                                </Badge>
+                            </div>
+                        )}
                     </CardContent>
-                    {!isSupported ? null : (
+                    {!isSupported ? null : !hasPermission ? (
                         <CardFooter className="pt-0">
                             <Button
                                 onClick={requestPermission}
@@ -161,9 +204,70 @@ export default function HomePage() {
                                 Grant Access
                             </Button>
                         </CardFooter>
-                    )}
+                    ) : null}
                 </Card>
-            )}
+
+                {/* Google Drive Backup Card */}
+                <Card className={`${!isDriveSupported ? 'border-red-300 bg-red-50' : (!isDriveAuthenticated && isBackupEnabled ? 'border-amber-300 bg-amber-50' : '')}`}>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base flex gap-2 items-center">
+                            <Cloud className="h-5 w-5 text-blue-600" />
+                            {!isDriveSupported ? 'Google Drive Not Available' : 'Google Drive Backup'}
+                        </CardTitle>
+                        <CardDescription>
+                            {!isDriveSupported
+                                ? "Your browser can't connect to Google Drive"
+                                : "Automatically back up all your data to Google Drive"}
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="pb-3">
+                        <p className="text-sm mb-3">
+                            {!isDriveSupported
+                                ? "Make sure you're online and your browser supports the required APIs."
+                                : isDriveAuthenticated
+                                    ? "Your data will be automatically backed up to Google Drive when changes are made."
+                                    : "Enable Google Drive backup to keep your data safe in the cloud."}
+                        </p>
+                        {isDriveSupported && (
+                            <div className="flex items-center space-x-2">
+                                <Badge variant="outline" className={`font-normal ${isDriveAuthenticated ? "bg-green-100 text-green-800" : ""}`}>
+                                    {isDriveAuthenticated ? 'Connected' : 'Not Connected'}
+                                </Badge>
+                                
+                                <div className="flex items-center space-x-2">
+                                    <span className="text-sm">Backup Enabled:</span>
+                                    <Switch
+                                        checked={isBackupEnabled}
+                                        onCheckedChange={handleToggleBackup}
+                                        disabled={!isDriveInitialized}
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                    {!isDriveSupported ? null : !isDriveAuthenticated && isBackupEnabled ? (
+                        <CardFooter className="pt-0">
+                            <Button
+                                onClick={() => requestDrivePermission()}
+                                variant="secondary"
+                                className="bg-blue-100 hover:bg-blue-200 text-blue-900"
+                            >
+                                Connect Google Drive
+                            </Button>
+                        </CardFooter>
+                    ) : isDriveAuthenticated ? (
+                        <CardFooter className="pt-0">
+                            <Button
+                                onClick={() => signOutDrive()}
+                                variant="outline"
+                                size="sm"
+                            >
+                                Disconnect
+                            </Button>
+                        </CardFooter>
+                    ) : null}
+                </Card>
+            </div>
 
             {/* Quick Actions */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

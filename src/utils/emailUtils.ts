@@ -104,12 +104,6 @@ function generateEmailBody(invoice: Invoice, companyInfo: CompanyInfo): string {
             color: #777;
             text-align: center;
           }
-          .xrechnung-notice {
-            font-size: 11px;
-            color: #555;
-            margin-top: 15px;
-            font-style: italic;
-          }
         </style>
       </head>
       <body>
@@ -128,9 +122,6 @@ function generateEmailBody(invoice: Invoice, companyInfo: CompanyInfo): string {
             <p><strong>Rechnungsdatum:</strong> ${formatDate(invoice.invoice_date || '')}</p>
             <p><strong>Fälligkeitsdatum:</strong> ${formattedDueDate}</p>
             <p class="total"><strong>Gesamtbetrag:</strong> ${formatCurrency(total)}</p>
-            ${companyInfo.registration_number ?
-      `<p><strong>Leitweg-ID:</strong> ${companyInfo.registration_number}</p>` :
-      ''}
           </div>
           
           <div class="payment-info">
@@ -149,10 +140,6 @@ function generateEmailBody(invoice: Invoice, companyInfo: CompanyInfo): string {
           <p>Vielen Dank für Ihr Vertrauen!</p>
           
           <p>Mit freundlichen Grüßen,<br>${companyInfo.name}</p>
-          
-          <div class="xrechnung-notice">
-            Diese Rechnung entspricht den Anforderungen des § 14 UStG und der XRechnung (Stand 2025).
-          </div>
           
           <div class="footer">
             ${companyInfo.address ? `<p>${companyInfo.address.replace(/\n/g, ', ')}</p>` : ''}

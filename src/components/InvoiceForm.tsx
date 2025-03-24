@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
@@ -38,14 +38,13 @@ export function InvoiceForm({ existingInvoice }: InvoiceFormProps) {
     // Form state
     const [invoiceNumber, setInvoiceNumber] = useState('');
     const [invoiceDate, setInvoiceDate] = useState<Date>(new Date());
-    const [dueDate, setDueDate] = useState<Date>(new Date(new Date().getTime() + 14 * 24 * 60 * 60 * 1000)); // 14 days from today
-    const [buyerReference, setBuyerReference] = useState('');
+    const [dueDate, setDueDate] = useState<Date>(addDays(new Date(), 14));
+    const [notes, setNotes] = useState('');
     const [clientVatId, setClientVatId] = useState('');
     const [clientVatExempt, setClientVatExempt] = useState(false);
-    const [clientElectronicAddress, setClientElectronicAddress] = useState('');
     const [taxExemptionReason, setTaxExemptionReason] = useState('');
     // Set initial tax rate based on company VAT settings
-    const [taxRate, setTaxRate] = useState<number>(companyInfo.is_vat_enabled ? companyInfo.default_tax_rate : 0);
+    const [taxRate, setTaxRate] = useState(19);
     const [issuer, setIssuer] = useState<IssuerData>({
         name: '',
         address: '',
@@ -69,12 +68,14 @@ export function InvoiceForm({ existingInvoice }: InvoiceFormProps) {
     // Generate invoice number if it's a new invoice
     useEffect(() => {
         if (!existingInvoice && !invoiceNumber) {
-            const currentYear = new Date().getFullYear().toString().substring(2);
-            const currentMonth = (new Date().getMonth() + 1).toString().padStart(2, '0');
-            const randomDigits = Math.floor(Math.random() * 9000 + 1000);
-            setInvoiceNumber(`INV-${currentYear}${currentMonth}-${randomDigits}`);
+            const generateNextInvoiceNumber = async () => {
+                const allInvoices = await loadInvoices();
+                const nextNumber = (allInvoices.length + 1).toString().padStart(3, '0');
+                setInvoiceNumber(nextNumber);
+            };
+            generateNextInvoiceNumber();
         }
-    }, [existingInvoice, invoiceNumber]);
+    }, [existingInvoice, invoiceNumber, loadInvoices]);
 
     // Load saved data
     useEffect(() => {
@@ -108,16 +109,17 @@ export function InvoiceForm({ existingInvoice }: InvoiceFormProps) {
         if (existingInvoice) {
             setInvoiceNumber(existingInvoice.invoice_number);
             setInvoiceDate(new Date(existingInvoice.invoice_date));
-            setDueDate(new Date(existingInvoice.due_date || ''));
-            setBuyerReference(existingInvoice.buyer_reference || '');
+            setDueDate(existingInvoice.due_date ? new Date(existingInvoice.due_date) : addDays(new Date(), 14));
+            setNotes(existingInvoice.notes || '');
+            setTaxRate(existingInvoice.tax_rate !== undefined ? existingInvoice.tax_rate : 19);
+            setTaxExemptionReason(existingInvoice.tax_exemption_reason || '');
             setClientVatId(existingInvoice.client_vat_id || '');
             setClientVatExempt(existingInvoice.client_vat_exempt || false);
-            setClientElectronicAddress(existingInvoice.client_electronic_address || '');
-            setTaxExemptionReason(existingInvoice.tax_exemption_reason || '');
-            setTaxRate(existingInvoice.tax_rate || 19);
             setIssuer(existingInvoice.issuer);
             setCustomer(existingInvoice.customer);
-            setItems(existingInvoice.items);
+            setItems(existingInvoice.items || [
+                { name: '', quantity: 1, price: 0 }
+            ]);
             setBankDetails(existingInvoice.bank_details);
         }
     }, [existingInvoice, companyInfo]);
@@ -195,12 +197,11 @@ export function InvoiceForm({ existingInvoice }: InvoiceFormProps) {
                 invoice_number: invoiceNumber,
                 invoice_date: format(invoiceDate, 'yyyy-MM-dd'),
                 due_date: format(dueDate, 'yyyy-MM-dd'),
+                notes: notes,
                 client_name: customer.name,
                 client_address: `${customer.address}\n${customer.city}`,
                 client_vat_id: clientVatId,
                 client_vat_exempt: clientVatExempt,
-                client_electronic_address: clientElectronicAddress,
-                buyer_reference: buyerReference,
                 tax_exemption_reason: taxExemptionReason,
                 tax_rate: taxRate,
                 issuer,
@@ -312,50 +313,14 @@ export function InvoiceForm({ existingInvoice }: InvoiceFormProps) {
                         </div>
 
                         <div>
-                            <div className="mb-1.5">
-                                <label htmlFor="buyer_reference" className="text-sm font-medium flex items-center">
-                                    Buyer Reference (XRechnung BT-10)
-                                    <span className="relative ml-1 cursor-help group z-50">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
-                                            <circle cx="12" cy="12" r="10"></circle>
-                                            <path d="M12 16v-4"></path>
-                                            <path d="M12 8h.01"></path>
-                                        </svg>
-                                        <div className="absolute left-0 md:left-full top-full md:top-0 z-50 w-72 p-2 bg-black text-white text-xs rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity">
-                                            A Buyer Reference (BT-10) is mandatory for public sector clients in Germany (XRechnung standard). For private clients, it's optional but recommended to include your invoice number or any client reference number to help with payment reconciliation.
-                                        </div>
-                                    </span>
-                                </label>
-                            </div>
-                            <div className="flex gap-2">
-                                <input
-                                    id="buyer_reference"
-                                    type="text"
-                                    value={buyerReference}
-                                    onChange={(e) => setBuyerReference(e.target.value)}
-                                    placeholder="Reference number of the buyer (e.g. PO number)"
-                                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (!buyerReference) {
-                                            setBuyerReference(invoiceNumber);
-                                        }
-                                    }}
-                                    className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 text-xs font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10"
-                                    title="Use invoice number as buyer reference"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-                                        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-                                    </svg>
-                                    <span className="ml-1">Copy Invoice #</span>
-                                </button>
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-1.5">
-                                Required for public sector clients, optional for private clients
-                            </p>
+                            <label htmlFor="notes" className="text-sm font-medium">Notes (Optional)</label>
+                            <textarea
+                                id="notes"
+                                value={notes}
+                                onChange={(e) => setNotes(e.target.value)}
+                                className="flex h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                placeholder="Additional notes or payment instructions"
+                            />
                         </div>
                     </div>
                 </CardContent>
@@ -471,44 +436,12 @@ export function InvoiceForm({ existingInvoice }: InvoiceFormProps) {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                         <div>
-                            <div className="mb-1.5">
-                                <label htmlFor="client_vat_id" className="text-sm font-medium">
-                                    VAT ID / Tax Number
-                                </label>
-                            </div>
-                            <input
-                                id="client_vat_id"
+                            <FormInput
+                                label="VAT ID / Tax Number"
                                 type="text"
                                 value={clientVatId}
                                 onChange={(e) => setClientVatId(e.target.value)}
                                 placeholder="Customer's VAT ID or tax number"
-                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                            />
-                        </div>
-
-                        <div>
-                            <div className="mb-1.5">
-                                <label htmlFor="client_leitweg_id" className="text-sm font-medium flex items-center">
-                                    Leitweg-ID
-                                    <span className="relative ml-1 cursor-help group z-50">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
-                                            <circle cx="12" cy="12" r="10"></circle>
-                                            <path d="M12 16v-4"></path>
-                                            <path d="M12 8h.01"></path>
-                                        </svg>
-                                        <div className="absolute left-0 md:left-full top-full md:top-0 z-50 w-72 p-2 bg-black text-white text-xs rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity">
-                                            A Leitweg-ID is required only for German public sector clients. It's a routing identifier used to direct electronic invoices within public administration. Private companies don't use a Leitweg-ID. Format: 991-XXXXX-XX.
-                                        </div>
-                                    </span>
-                                </label>
-                            </div>
-                            <input
-                                id="client_leitweg_id"
-                                type="text"
-                                value={clientElectronicAddress}
-                                onChange={(e) => setClientElectronicAddress(e.target.value)}
-                                placeholder="Required for public sector clients (format: 991-XXXXX-XX)"
-                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                             />
                         </div>
 

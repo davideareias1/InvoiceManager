@@ -148,7 +148,19 @@ export default function CompanyPage() {
 
                                 {companyInfo.is_freelancer && (
                                     <div className="space-y-2 max-w-md">
-                                        <Label htmlFor="full_name">Full Name</Label>
+                                        <div className="flex items-center gap-2">
+                                            <Label htmlFor="full_name" className="required">Full Name</Label>
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger>
+                                                        <Info className="h-4 w-4 text-muted-foreground" />
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p>Your full name is required and will appear on invoices</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        </div>
                                         <Input
                                             id="full_name"
                                             name="full_name"
@@ -163,8 +175,15 @@ export default function CompanyPage() {
                                                     updateCompanyInfo({ account_name: newFullName });
                                                 }
                                             }}
-                                            placeholder="Your full name (will appear before company name)"
+                                            placeholder="Your full legal name"
+                                            required
+                                            className={!companyInfo.full_name ? 'border-red-500' : ''}
                                         />
+                                        {!companyInfo.full_name && (
+                                            <p className="text-sm text-red-500">
+                                                Full name is required for freelancers
+                                            </p>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -254,33 +273,6 @@ export default function CompanyPage() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <div className="flex items-center gap-1.5">
-                                        <Label htmlFor="registration_number">Leitweg-ID (for XRechnung)</Label>
-                                        <TooltipProvider>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                                                </TooltipTrigger>
-                                                <TooltipContent className="max-w-xs">
-                                                    A Leitweg-ID is only required if your company provides services to German public sector clients.
-                                                    This ID helps route your electronic invoices correctly within the public administration.
-                                                </TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
-                                    </div>
-                                    <Input
-                                        id="registration_number"
-                                        name="registration_number"
-                                        value={companyInfo.registration_number}
-                                        onChange={handleChange}
-                                        placeholder="Your Leitweg-ID for XRechnung"
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                        Format: 991-XXXXX-XX (only needed for German public sector clients)
-                                    </p>
-                                </div>
-
-                                <div className="space-y-2">
                                     <Label htmlFor="trade_register">Trade Register</Label>
                                     <Input
                                         id="trade_register"
@@ -288,17 +280,6 @@ export default function CompanyPage() {
                                         value={companyInfo.trade_register}
                                         onChange={handleChange}
                                         placeholder="e.g., HRB 12345, Amtsgericht Berlin"
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="electronic_address">Electronic Invoice Address</Label>
-                                    <Input
-                                        id="electronic_address"
-                                        name="electronic_address"
-                                        value={companyInfo.electronic_address}
-                                        onChange={handleChange}
-                                        placeholder="Your electronic address for XRechnung"
                                     />
                                 </div>
                             </div>
@@ -506,7 +487,14 @@ export default function CompanyPage() {
                                             </AvatarFallback>
                                         </Avatar>
                                         <div>
-                                            <p className="font-medium">{companyInfo.name || 'Your Company Name'}</p>
+                                            {companyInfo.is_freelancer && companyInfo.full_name ? (
+                                                <>
+                                                    <p className="font-medium">{companyInfo.full_name}</p>
+                                                    <p className="text-sm text-muted-foreground">{companyInfo.name || 'Your Company Name'}</p>
+                                                </>
+                                            ) : (
+                                                <p className="font-medium">{companyInfo.name || 'Your Company Name'}</p>
+                                            )}
                                             <p className="text-xs text-muted-foreground">
                                                 {companyInfo.address ? companyInfo.address.split('\n')[0] : 'Your Address'}
                                             </p>
@@ -516,6 +504,16 @@ export default function CompanyPage() {
                                 <p className="text-sm text-muted-foreground">
                                     This shows how your logo will appear on invoices and other documents.
                                 </p>
+                                
+                                {companyInfo.is_freelancer && !companyInfo.full_name && (
+                                    <Alert variant="destructive" className="mt-4">
+                                        <AlertCircle className="h-4 w-4" />
+                                        <AlertTitle>Full Name Required</AlertTitle>
+                                        <AlertDescription>
+                                            As a freelancer, you must provide your full name in the General settings tab.
+                                        </AlertDescription>
+                                    </Alert>
+                                )}
                             </div>
                         </CardContent>
                     </Card>

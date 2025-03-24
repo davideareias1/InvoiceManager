@@ -14,7 +14,6 @@ const PDF_MARGIN_BOTTOM = 15;
 
 /**
  * Generate a PDF invoice from invoice data
- * Compliant with German XRechnung 2025 Standards
  */
 export async function generateInvoicePDF(
     invoice: Invoice,
@@ -27,88 +26,46 @@ export async function generateInvoicePDF(
         format: 'a4'
     });
 
-    try {
-        // Add company logo if exists
-        if (companyInfo.logo_url) {
-            try {
-                await addLogo(doc, companyInfo.logo_url);
-            } catch (error) {
-                console.error('Error adding logo to PDF:', error);
-                // Continue without logo
-            }
-        }
-
-        // Add company info
-        addCompanyInfo(doc, companyInfo);
-
-        // Add billing info
-        addBillingInfo(doc, invoice);
-
-        // Add invoice header - move the position down to prevent overlapping
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(16);
-        doc.text(`Rechnung #${invoice.invoice_number}`, doc.internal.pageSize.width - PDF_MARGIN_RIGHT - 80, 70, { align: 'left' });
-
-        // Add XRechnung 2025 required fields 
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
-        doc.text(`Datum: ${formatDate(invoice.invoice_date || '')}`, PDF_MARGIN_LEFT, 80);
-        doc.text(`Fälligkeitsdatum: ${formatDate(invoice.due_date || '')}`, PDF_MARGIN_LEFT, 85);
-
-        // Add BT-10 mandatory field (Buyer reference according to XRechnung 2025)
-        const buyerReference = invoice.buyer_reference || invoice.invoice_number;
-        doc.text(`Käuferreferenz: ${buyerReference}`, PDF_MARGIN_LEFT, 90);
-
-        // Add Leitweg-ID field (required for XRechnung 2025)
-        if (companyInfo.registration_number) {
-            doc.text(`Leitweg-ID: ${companyInfo.registration_number}`, PDF_MARGIN_LEFT, 95);
-        } else {
-            doc.text(`Leitweg-ID: -`, PDF_MARGIN_LEFT, 95);
-        }
-
-        // Add items table using simpler method
-        addSimpleTable(doc, invoice.items);
-
-        // Calculate the end of the table
-        const tableEndY = 105 + (invoice.items.length * 10) + 20;
-
-        // Add totals
-        addTotalsSimple(doc, invoice, companyInfo, tableEndY);
-
-        // Add payment info with SEPA data
-        addPaymentInfoSimple(doc, companyInfo, invoice, tableEndY + 40);
-
-        // Add notes if any
-        if (invoice.notes) {
-            doc.setFontSize(10);
-            doc.text('Anmerkungen:', PDF_MARGIN_LEFT, doc.internal.pageSize.height - 50);
-
-            // Word wrap for notes
-            const splitNotes = doc.splitTextToSize(
-                invoice.notes,
-                doc.internal.pageSize.width - PDF_MARGIN_LEFT - PDF_MARGIN_RIGHT
-            );
-
-            doc.text(splitNotes, PDF_MARGIN_LEFT, doc.internal.pageSize.height - 45);
-        }
-
-        // Add XRechnung 2025 compliance notice
-        doc.setFontSize(8);
-        doc.text(
-            'Diese Rechnung entspricht den Anforderungen der EU-Richtlinie 2014/55/EU und der XRechnung (Stand 2025).',
-            PDF_MARGIN_LEFT,
-            doc.internal.pageSize.height - 30
-        );
-
-        // Add footer with extended information
-        addFooter(doc, companyInfo, invoice);
-
-        // Return as blob
-        return doc.output('blob');
-    } catch (error) {
-        console.error('Error generating PDF:', error);
-        throw error;
+    // Add company logo if available
+    if (companyInfo.logo_url) {
+        await addLogo(doc, companyInfo.logo_url);
     }
+
+    // Add invoice title and information at the top of the page
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.text(`Rechnung #${invoice.invoice_number}`, doc.internal.pageSize.width - PDF_MARGIN_RIGHT, PDF_MARGIN_TOP + 10, { align: 'right' });
+    
+    // Add invoice date and due date below the title
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text(`Datum: ${formatDate(invoice.invoice_date || '')}`, doc.internal.pageSize.width - PDF_MARGIN_RIGHT, PDF_MARGIN_TOP + 16, { align: 'right' });
+    doc.text(`Fälligkeitsdatum: ${formatDate(invoice.due_date || '')}`, doc.internal.pageSize.width - PDF_MARGIN_RIGHT, PDF_MARGIN_TOP + 22, { align: 'right' });
+
+    // Add company info section
+    addCompanyInfo(doc, companyInfo);
+
+    // Add billing info (with adjusted position)
+    addBillingInfo(doc, invoice);
+
+    // Add simple table of items
+    addSimpleTable(doc, invoice.items);
+
+    // Calculate vertical position for totals based on table content
+    const totalItems = invoice.items.length;
+    const tableEndY = 110 + (totalItems * 10);
+
+    // Add totals and get the final y position
+    const totalsEndY = addTotalsSimple(doc, invoice, companyInfo, tableEndY);
+
+    // Add payment information with dynamic positioning
+    addPaymentInfoSimple(doc, companyInfo, invoice, totalsEndY);
+
+    // Add footer with company details
+    addFooter(doc, companyInfo, invoice);
+
+    // Return the PDF as a blob
+    return doc.output('blob');
 }
 
 /**
@@ -116,19 +73,26 @@ export async function generateInvoicePDF(
  */
 function addSimpleTable(doc: jsPDF, items: InvoiceItem[]): void {
     const startY = 100;
+    const columnWidths = {
+        pos: 10,
+        description: 85,
+        quantity: 20,
+        unitPrice: 35,
+        totalPrice: 35
+    };
 
-    // Headers
+    // Headers with proper German terms and spacing
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.text('Pos.', PDF_MARGIN_LEFT, startY);
-    doc.text('Artikelbezeichnung', PDF_MARGIN_LEFT + 15, startY);
-    doc.text('Menge', PDF_MARGIN_LEFT + 100, startY);
-    doc.text('Einzelpreis', PDF_MARGIN_LEFT + 130, startY);
-    doc.text('Gesamtpreis', PDF_MARGIN_LEFT + 160, startY);
+    doc.text('Artikelbezeichnung', PDF_MARGIN_LEFT + columnWidths.pos + 5, startY);
+    doc.text('Menge', PDF_MARGIN_LEFT + columnWidths.pos + columnWidths.description + 5, startY, { align: 'right' });
+    doc.text('Einzelpreis', PDF_MARGIN_LEFT + columnWidths.pos + columnWidths.description + columnWidths.quantity + 5, startY, { align: 'right' });
+    doc.text('Gesamtpreis', doc.internal.pageSize.width - PDF_MARGIN_RIGHT, startY, { align: 'right' });
 
-    // Draw a line under the headers
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.5);
+    // Draw a line under the headers - make it slightly thicker
+    doc.setDrawColor(100, 100, 100);
+    doc.setLineWidth(0.3);
     doc.line(
         PDF_MARGIN_LEFT,
         startY + 3,
@@ -141,51 +105,64 @@ function addSimpleTable(doc: jsPDF, items: InvoiceItem[]): void {
     let y = startY + 10;
 
     items.forEach((item, index) => {
+        // Position number
         doc.text((index + 1).toString(), PDF_MARGIN_LEFT, y);
 
-        // Handle item name with line breaks
-        // Limit width for description text to prevent overlap with the next column
-        const descriptionWidth = PDF_MARGIN_LEFT + 80 - (PDF_MARGIN_LEFT + 15);
+        // Description with proper wrapping
+        const descriptionX = PDF_MARGIN_LEFT + columnWidths.pos + 5;
+        const wrappedText = doc.splitTextToSize(item.description || item.name, columnWidths.description);
 
-        // Use item description if available, otherwise use item name
-        let descriptionText = item.description || item.name;
-
-        // Split text to fit within width
-        const wrappedText = doc.splitTextToSize(descriptionText, descriptionWidth);
-
-        // Print each line of wrapped text with proper spacing
+        // Print each line of wrapped text
         wrappedText.forEach((line: string, lineIndex: number) => {
-            doc.text(line, PDF_MARGIN_LEFT + 15, y + (lineIndex * 5));
+            doc.text(line, descriptionX, y + (lineIndex * 5));
         });
 
-        // Determine the height of the description to adjust y position
-        const lineHeight = wrappedText.length * 5;
+        // Calculate the maximum height needed for this row
+        const lineHeight = Math.max(wrappedText.length * 5, 5);
 
-        // Position quantity, prices at the first line height
-        doc.text(item.quantity.toString(), PDF_MARGIN_LEFT + 100, y);
-        doc.text(formatCurrency(item.price), PDF_MARGIN_LEFT + 130, y);
+        // Right-aligned quantity, unit price, and total price
+        const quantityX = PDF_MARGIN_LEFT + columnWidths.pos + columnWidths.description + columnWidths.quantity + 5;
+        const unitPriceX = quantityX + columnWidths.quantity;
+        const totalPriceX = doc.internal.pageSize.width - PDF_MARGIN_RIGHT;
+
+        doc.text(item.quantity.toString(), quantityX, y, { align: 'right' });
+        doc.text(formatCurrency(item.price), unitPriceX, y, { align: 'right' });
         const itemTotal = item.quantity * item.price;
-        doc.text(formatCurrency(itemTotal), PDF_MARGIN_LEFT + 160, y);
+        doc.text(formatCurrency(itemTotal), totalPriceX, y, { align: 'right' });
 
-        // Adjust y based on the number of lines in the description plus spacing
-        y += Math.max(10, lineHeight + 5); // At least 10mm spacing or more if needed for wrapped text
+        // Add light gray separator line between items
+        if (index < items.length - 1) {
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.1);
+            doc.line(
+                PDF_MARGIN_LEFT,
+                y + lineHeight + 2,
+                doc.internal.pageSize.width - PDF_MARGIN_RIGHT,
+                y + lineHeight + 2
+            );
+        }
+
+        // Adjust y position for next item
+        y += lineHeight + 5;
     });
 
-    // Draw a line at the bottom
-    doc.setDrawColor(200, 200, 200);
+    // Draw a final line at the bottom - make it slightly thicker
+    doc.setDrawColor(100, 100, 100);
+    doc.setLineWidth(0.3);
     doc.line(
-        PDF_MARGIN_LEFT + 100,
-        y,
+        PDF_MARGIN_LEFT,
+        y + 2,
         doc.internal.pageSize.width - PDF_MARGIN_RIGHT,
-        y
+        y + 2
     );
 }
 
 /**
  * Add totals section to PDF without using autoTable
  */
-function addTotalsSimple(doc: jsPDF, invoice: Invoice, companyInfo: CompanyInfo, yPos: number): void {
+function addTotalsSimple(doc: jsPDF, invoice: Invoice, companyInfo: CompanyInfo, yPos: number): number {
     const rightColumnX = doc.internal.pageSize.width - PDF_MARGIN_RIGHT - 80;
+    const amountsX = doc.internal.pageSize.width - PDF_MARGIN_RIGHT;
 
     // Calculate totals
     const subtotal = invoice.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
@@ -193,88 +170,86 @@ function addTotalsSimple(doc: jsPDF, invoice: Invoice, companyInfo: CompanyInfo,
     const taxAmount = subtotal * (taxRate / 100);
     const total = subtotal + taxAmount;
 
+    let y = yPos + 10;
+
+    // Totals section with proper alignment and spacing
+    doc.setDrawColor(100, 100, 100);
+    doc.setLineWidth(0.3);
+
+    // Nettobetrag (Net amount)
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-
-    let y = yPos;
-
-    // Add payment terms information aligned with amounts on right side 
-    doc.text('Zahlungsbedingungen:', rightColumnX, y);
-    y += 5;
-
-    // Wrap payment terms text to fit in the column width
-    const paymentTermsWidth = doc.internal.pageSize.width - PDF_MARGIN_RIGHT - rightColumnX;
-    const paymentTermsText = 'Zahlbar innerhalb von 14 Tagen nach Rechnungserhalt ohne Abzug';
-    const wrappedPaymentTerms = doc.splitTextToSize(paymentTermsText, paymentTermsWidth);
-
-    // Print each line of wrapped payment terms
-    wrappedPaymentTerms.forEach((line: string, index: number) => {
-        doc.text(line, rightColumnX, y + (index * 5));
-    });
-
-    // Adjust y position based on number of lines
-    y += (wrappedPaymentTerms.length * 5) + 5;
-
-    // Netto (BT-106 Invoice total amount without VAT)
     doc.text('Nettobetrag:', rightColumnX, y);
-    doc.text(formatCurrency(subtotal), doc.internal.pageSize.width - PDF_MARGIN_RIGHT, y, { align: 'right' });
+    doc.text(formatCurrency(subtotal), amountsX, y, { align: 'right' });
     y += 5;
 
-    // Tax based on tax_rate (BT-110, BT-117, BT-118 VAT breakdown)
+    // Tax information
     if (taxRate > 0) {
-        doc.text(`Umsatzsteuer (${taxRate}%):`, rightColumnX, y);
-        doc.text(formatCurrency(taxAmount), doc.internal.pageSize.width - PDF_MARGIN_RIGHT, y, { align: 'right' });
+        doc.text(`Umsatzsteuer (${taxRate}%)`, rightColumnX, y);
+        doc.text(formatCurrency(taxAmount), amountsX, y, { align: 'right' });
         y += 5;
     } else {
-        // For tax exempt invoices - specify reason according to XRechnung 2025 requirements
-        const exemptionReason = invoice.tax_exemption_reason ||
-            (companyInfo.is_vat_enabled ? 'Steuerfreie Leistung' : 'Gemäß § 19 UStG keine Umsatzsteuer (Kleinunternehmerregelung)');
-
-        // Handle text wrapping for longer exemption reasons
-        const maxWidth = doc.internal.pageSize.width - PDF_MARGIN_RIGHT - rightColumnX;
-        const wrappedText = doc.splitTextToSize(exemptionReason, maxWidth);
-
-        // Print each line of the wrapped text
-        wrappedText.forEach((line: string, index: number) => {
-            doc.text(line, rightColumnX, y + (index * 5));
-        });
-
-        // Adjust y position based on number of lines
-        y += (5 * wrappedText.length) + 2;
+        // Tax exemption notice with proper formatting
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(9);
+        if (!companyInfo.is_vat_enabled) {
+            doc.text('Gemäß § 19 UStG keine Umsatzsteuer (Kleinunternehmerregelung)',
+                    PDF_MARGIN_LEFT, y);
+        } else if (invoice.client_vat_id && !invoice.client_vat_id.startsWith('DE')) {
+            doc.text('Steuerschuldnerschaft des Leistungsempfängers (Reverse-Charge-Verfahren)',
+                    PDF_MARGIN_LEFT, y);
+        }
+        y += 5;
     }
 
-    // Draw line
-    doc.setDrawColor(200);
-    doc.line(rightColumnX, y, doc.internal.pageSize.width - PDF_MARGIN_RIGHT, y);
+    // Draw separator line before total
+    doc.line(rightColumnX, y, amountsX, y);
     y += 5;
 
-    // Total (BT-112 Invoice total amount with VAT)
+    // Total amount with proper emphasis
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
+    doc.setFontSize(11);
     doc.text('Gesamtbetrag:', rightColumnX, y);
-    doc.text(formatCurrency(total), doc.internal.pageSize.width - PDF_MARGIN_RIGHT, y, { align: 'right' });
+    doc.text(formatCurrency(total), amountsX, y, { align: 'right' });
 
-    // Add invoice currency code - required by XRechnung 2025
-    y += 5;
+    // Currency information
+    y += 10;
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.text('Währung: EUR (BT-5)', rightColumnX, y);
+    doc.setFontSize(9);
+    doc.text('Währung: EUR', PDF_MARGIN_LEFT, y);
+
+    return y; // Return the final y position
 }
 
 /**
- * Add payment info section to PDF
+ * Add payment info section to PDF with improved positioning
  */
 function addPaymentInfoSimple(doc: jsPDF, companyInfo: CompanyInfo, invoice: Invoice, yPos: number): void {
+    // Add some spacing after the totals section
+    let y = yPos + 25;
+
+    // Payment terms section
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('Zahlungsinformationen', PDF_MARGIN_LEFT, yPos);
+    doc.setFontSize(10);
+    doc.text('Zahlungsbedingungen:', PDF_MARGIN_LEFT, y);
+    
+    doc.setFont('helvetica', 'normal');
+    y += 5;
+    const paymentTermsText = 'Zahlbar innerhalb von 14 Tagen nach Rechnungserhalt ohne Abzug.';
+    doc.text(paymentTermsText, PDF_MARGIN_LEFT, y);
+
+    // Add spacing before payment information
+    y += 15;
+
+    // Payment information section
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Zahlungsinformationen', PDF_MARGIN_LEFT, y);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
+    y += 7;
 
-    let y = yPos + 10;
-
-    // BG-17 CREDIT TRANSFER (required by XRechnung 2025)
+    // Bank information with consistent spacing
     if (companyInfo.bank_name) {
         doc.text(`Bank: ${companyInfo.bank_name}`, PDF_MARGIN_LEFT, y);
         y += 5;
@@ -285,28 +260,21 @@ function addPaymentInfoSimple(doc: jsPDF, companyInfo: CompanyInfo, invoice: Inv
         y += 5;
     }
 
-    if (companyInfo.account_number) {
-        doc.text(`Kontonummer: ${companyInfo.account_number}`, PDF_MARGIN_LEFT, y);
-        y += 5;
-    }
-
-    // BT-84 Payment account identifier (mandatory for XRechnung 2025)
     if (companyInfo.iban) {
         doc.text(`IBAN: ${companyInfo.iban}`, PDF_MARGIN_LEFT, y);
         y += 5;
     }
 
-    // BT-86 Payment service provider identifier (BIC, optional but recommended)
     if (companyInfo.swift_bic) {
         doc.text(`BIC: ${companyInfo.swift_bic}`, PDF_MARGIN_LEFT, y);
         y += 5;
     }
 
-    // BT-83 Remittance information (optional but recommended for XRechnung 2025)
+    // Payment reference
     doc.text(`Verwendungszweck: Rechnung ${invoice.invoice_number}`, PDF_MARGIN_LEFT, y);
     y += 10;
 
-    // BG-16 PAYMENT INSTRUCTIONS (helpful for XRechnung 2025)
+    // Payment notice
     doc.setFont('helvetica', 'bold');
     doc.text('Hinweis:', PDF_MARGIN_LEFT, y);
     doc.setFont('helvetica', 'normal');
@@ -466,12 +434,12 @@ function addBillingInfo(doc: jsPDF, invoice: Invoice): void {
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.text('Rechnungsempfänger:', rightColumnX, PDF_MARGIN_TOP + 25);
+    doc.text('Rechnungsempfänger:', rightColumnX, PDF_MARGIN_TOP + 35);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
 
-    let y = PDF_MARGIN_TOP + 30;
+    let y = PDF_MARGIN_TOP + 40;
 
     // Add client name - use customer.name as fallback (BT-44 Buyer name, mandatory)
     const clientName = invoice.client_name || invoice.customer?.name || '';
@@ -515,79 +483,64 @@ function addBillingInfo(doc: jsPDF, invoice: Invoice): void {
  * Add footer to PDF with enhanced information for XRechnung compliance
  */
 function addFooter(doc: jsPDF, companyInfo: CompanyInfo, invoice: Invoice): void {
+    const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
-
+    
+    // Draw light gray line above footer
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.5);
+    doc.line(PDF_MARGIN_LEFT, pageHeight - 30, pageWidth - PDF_MARGIN_RIGHT, pageHeight - 30);
+    
+    // Footer text starts here
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
-
+    doc.setTextColor(100, 100, 100);
+    
     let footerText = '';
-
-    if (companyInfo.tax_id) {
-        footerText += `USt-IdNr.: ${companyInfo.tax_id} • `;
-    }
-
-    if (companyInfo.tax_number) {
+    
+    // Company name
+    footerText += companyInfo.name + ' • ';
+    
+    // Address (simplified to one line)
+    const addressParts = companyInfo.address.split('\n');
+    footerText += addressParts.join(', ') + ' • ';
+    
+    // Tax ID - ensure tax information is included (required by German law)
+    if (companyInfo.tax_id && companyInfo.is_vat_enabled) {
+        footerText += `USt-IdNr: ${companyInfo.tax_id} • `;
+    } else if (companyInfo.tax_number) {
         footerText += `Steuernummer: ${companyInfo.tax_number} • `;
     }
-
-    if (companyInfo.registration_number) {
-        footerText += `Leitweg-ID: ${companyInfo.registration_number} • `;
+    
+    // Cut footer text if too long
+    if (doc.getTextWidth(footerText) > (pageWidth - (PDF_MARGIN_LEFT + PDF_MARGIN_RIGHT))) {
+        // Truncate and add ellipsis if too long
+        footerText = footerText.substring(0, 100) + '...';
     }
-
-    if (companyInfo.trade_register) {
-        footerText += `Handelsregister: ${companyInfo.trade_register} • `;
-    }
-
-    // Add version information for XRechnung
-    footerText += `Rechnungsformat: XRechnung (EN16931/2025) • `;
-
-    // Add XRechnung identifier
-    footerText += `Standard: urn:cen.eu:en16931:2017:compliant:xrechnung:3.0 • `;
-
-    if (footerText) {
-        // Remove trailing separator
-        footerText = footerText.slice(0, -3);
-
-        // Center the footer text
-        const textWidth = doc.getStringUnitWidth(footerText) * 8 / doc.internal.scaleFactor;
-        const textX = (doc.internal.pageSize.width - textWidth) / 2;
-
-        doc.text(footerText, textX, pageHeight - PDF_MARGIN_BOTTOM);
-    }
-
-    // Add legal notice about XRechnung 2025 and VAT status
-    doc.setFontSize(7);
-
-    // Determine the appropriate legal notice based on tax situation
+    
+    // Position footer text centrally
+    doc.text(footerText, pageWidth / 2, pageHeight - 20, { align: 'center' });
+    
+    // Add bank information line
+    let bankInfo = '';
+    if (companyInfo.account_name) bankInfo += `Kontoinhaber: ${companyInfo.account_name} • `;
+    if (companyInfo.iban) bankInfo += `IBAN: ${companyInfo.iban} • `;
+    if (companyInfo.swift_bic) bankInfo += `BIC: ${companyInfo.swift_bic}`;
+    
+    // Position bank info centrally
+    doc.text(bankInfo, pageWidth / 2, pageHeight - 15, { align: 'center' });
+    
+    // Add legal notice about VAT status - required for German law compliance
     let legalNotice = '';
-
-    // Check if it's a reverse charge situation (client has VAT ID but no tax)
-    const isReverseCharge = companyInfo.is_vat_enabled && invoice.client_vat_id &&
-        (invoice.tax_rate === 0) &&
-        (invoice.tax_exemption_reason?.includes('Reverse-Charge') ||
-            invoice.tax_exemption_reason?.includes('innergemeinschaftliche'));
-
     if (!companyInfo.is_vat_enabled) {
-        // Kleinunternehmer case
-        legalNotice = 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet (Kleinunternehmerregelung). Diese Rechnung erfüllt die Anforderungen der XRechnungsverordnung.';
-    } else if (isReverseCharge) {
-        // Reverse charge case
-        legalNotice = 'Steuerschuldnerschaft des Leistungsempfängers (Reverse-Charge-Verfahren). Diese Rechnung erfüllt die Anforderungen der XRechnungsverordnung.';
+        legalNotice = 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.';
+    } else if (invoice.tax_rate === 0 && invoice.client_vat_id && 
+              (invoice.client_vat_id.startsWith('DE') === false)) {
+        legalNotice = 'Steuerschuldnerschaft des Leistungsempfängers nach §13b UStG.';
     } else {
-        // Standard case
-        legalNotice = 'Diese Rechnung erfüllt die gesetzlichen Anforderungen an strukturierte elektronische Rechnungen gemäß § 14 UStG und XRechnungsverordnung.';
+        legalNotice = 'Rechnungsstellung gemäß § 14 UStG.';
     }
-
-    // Split text into multiple lines if needed
-    const maxWidth = doc.internal.pageSize.width - (PDF_MARGIN_LEFT * 2);
-    const wrappedLegalNotice = doc.splitTextToSize(legalNotice, maxWidth);
-
-    // Print each line of the wrapped legal notice
-    wrappedLegalNotice.forEach((line: string, index: number) => {
-        doc.text(
-            line,
-            PDF_MARGIN_LEFT,
-            pageHeight - PDF_MARGIN_BOTTOM + 5 + (index * 4)
-        );
-    });
+    
+    // Position legal notice centrally
+    doc.text(legalNotice, pageWidth / 2, pageHeight - 10, { align: 'center' });
 } 
