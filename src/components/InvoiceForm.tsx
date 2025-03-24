@@ -79,30 +79,22 @@ export function InvoiceForm({ existingInvoice }: InvoiceFormProps) {
 
     // Load saved data
     useEffect(() => {
-        const savedIssuer = getIssuerData();
-        const savedBank = getBankDetails();
-
-        // First check if we have company info from the context
+        // Set issuer and bank details from company info
         if (companyInfo && companyInfo.name) {
-            setIssuer({
+            const issuerData = {
                 name: companyInfo.name,
                 address: companyInfo.address?.split('\n')[0] || '',
                 city: companyInfo.address?.split('\n')[1] || '',
-            });
-
-            setBankDetails({
+            };
+            
+            const bankData = {
                 name: companyInfo.bank_name || '',
                 iban: companyInfo.iban || '',
                 bic: companyInfo.swift_bic || '',
-            });
-        }
-        // Fall back to saved data if no context data
-        else if (savedIssuer) {
-            setIssuer(savedIssuer);
-        }
+            };
 
-        if (!companyInfo.bank_name && savedBank) {
-            setBankDetails(savedBank);
+            setIssuer(issuerData);
+            setBankDetails(bankData);
         }
 
         // If editing an existing invoice, populate the form
@@ -115,12 +107,10 @@ export function InvoiceForm({ existingInvoice }: InvoiceFormProps) {
             setTaxExemptionReason(existingInvoice.tax_exemption_reason || '');
             setClientVatId(existingInvoice.client_vat_id || '');
             setClientVatExempt(existingInvoice.client_vat_exempt || false);
-            setIssuer(existingInvoice.issuer);
             setCustomer(existingInvoice.customer);
             setItems(existingInvoice.items || [
                 { name: '', quantity: 1, price: 0 }
             ]);
-            setBankDetails(existingInvoice.bank_details);
         }
     }, [existingInvoice, companyInfo]);
 
@@ -328,35 +318,6 @@ export function InvoiceForm({ existingInvoice }: InvoiceFormProps) {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Issuer Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <FormInput
-                        label="Name"
-                        type="text"
-                        value={issuer.name}
-                        onChange={(e) => setIssuer({ ...issuer, name: e.target.value })}
-                        required
-                    />
-                    <FormInput
-                        label="Address"
-                        type="text"
-                        value={issuer.address}
-                        onChange={(e) => setIssuer({ ...issuer, address: e.target.value })}
-                        required
-                    />
-                    <FormInput
-                        label="City, Postal Code"
-                        type="text"
-                        value={issuer.city}
-                        onChange={(e) => setIssuer({ ...issuer, city: e.target.value })}
-                        required
-                    />
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
                     <CardTitle>Customer Information</CardTitle>
                     <CardDescription>Details about your customer or client</CardDescription>
                 </CardHeader>
@@ -545,7 +506,7 @@ export function InvoiceForm({ existingInvoice }: InvoiceFormProps) {
 
                     <div className="text-right mt-6">
                         <div className="text-lg font-semibold">
-                            Total: ${total.toFixed(2)}
+                            Total: €{total.toFixed(2)}
                         </div>
                     </div>
                 </CardContent>
@@ -611,35 +572,6 @@ export function InvoiceForm({ existingInvoice }: InvoiceFormProps) {
                             </div>
                         )}
                     </div>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>Bank Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <FormInput
-                        label="Bank Name"
-                        type="text"
-                        value={bankDetails.name}
-                        onChange={(e) => setBankDetails({ ...bankDetails, name: e.target.value })}
-                        required
-                    />
-                    <FormInput
-                        label="IBAN"
-                        type="text"
-                        value={bankDetails.iban}
-                        onChange={(e) => setBankDetails({ ...bankDetails, iban: e.target.value })}
-                        required
-                    />
-                    <FormInput
-                        label="BIC"
-                        type="text"
-                        value={bankDetails.bic}
-                        onChange={(e) => setBankDetails({ ...bankDetails, bic: e.target.value })}
-                        required
-                    />
                 </CardContent>
             </Card>
 
