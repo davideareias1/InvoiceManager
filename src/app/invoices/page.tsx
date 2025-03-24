@@ -11,7 +11,7 @@ import { Label } from '../../components/ui/label';
 import { searchInvoices, getMonthlyTotals } from '../../utils/invoiceUtils';
 import { generateInvoicePDF } from '@/utils/pdfUtils';
 import { Invoice } from '../../interfaces';
-import { PlusCircle, Download, Trash, Search, FileText, AlertCircle, FolderOpen, Clock, X, CheckCircle, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
+import { PlusCircle, Download, Trash, Search, FileText, AlertCircle, FolderOpen, Clock, X, CheckCircle, ChevronLeft, ChevronRight, ArrowUpDown, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { useFileSystem } from '../../contexts/FileSystemContext';
 import { useCompany } from '../../contexts/CompanyContext';
@@ -59,6 +59,9 @@ export default function Invoices() {
 
     // Get company information for PDF generation
     const { companyInfo } = useCompany();
+
+    // Add loading state trackers for invoice actions
+    const [actionLoading, setActionLoading] = useState<{[key: string]: string}>({});
 
     // Load invoices function (extracted for reuse)
     const loadInvoicesData = useCallback(async (showLoadingState = true) => {
@@ -300,7 +303,7 @@ export default function Invoices() {
         setCurrentPage(1); // Reset to first page
     };
 
-    // Handle invoice deletion
+    // Handle invoice deletion with loading animation
     const handleDelete = async (invoiceNumber: string) => {
         const confirmed = await showConfirmation(
             'Are you sure you want to delete this invoice?',
@@ -310,6 +313,9 @@ export default function Invoices() {
 
         if (confirmed) {
             try {
+                // Set loading state for this specific invoice
+                setActionLoading(prev => ({...prev, [invoiceNumber]: 'deleting'}));
+                
                 // Delete from file system
                 const success = await deleteInvoiceFromFS(invoiceNumber);
 
@@ -324,7 +330,57 @@ export default function Invoices() {
             } catch (error) {
                 console.error("Error deleting invoice:", error);
                 showError("An error occurred while deleting the invoice");
+            } finally {
+                // Clear loading state
+                setActionLoading(prev => {
+                    const newState = {...prev};
+                    delete newState[invoiceNumber];
+                    return newState;
+                });
             }
+        }
+    };
+
+    // Handle toggle paid status with loading animation
+    const handleTogglePaidStatus = async (invoice: Invoice) => {
+        const updatedInvoice = {
+            ...invoice,
+            is_paid: !invoice.is_paid,
+            status: !invoice.is_paid ? 'paid' : 'unpaid'
+        } as Invoice;
+
+        try {
+            // Set loading state for this specific invoice
+            setActionLoading(prev => ({...prev, [invoice.invoice_number]: 'updating'}));
+            
+            // Delete and save updated invoice
+            await deleteInvoiceFromFS(invoice.invoice_number);
+            const success = await saveInvoice(updatedInvoice);
+
+            if (success) {
+                // Update local state - this will trigger the filters to reapply
+                const updatedInvoices = invoices.map(inv =>
+                    inv.invoice_number === invoice.invoice_number
+                        ? updatedInvoice
+                        : inv
+                );
+                setInvoices(updatedInvoices);
+
+                // No need to call loadInvoicesData here, as the useEffect will handle the filtering
+                showSuccess(`Invoice marked as ${updatedInvoice.is_paid ? 'paid' : 'unpaid'}`);
+            }
+        } catch (error) {
+            console.error("Error updating invoice:", error);
+            showError("Failed to update invoice status");
+        } finally {
+            // Clear loading state after a short delay for animation smoothness
+            setTimeout(() => {
+                setActionLoading(prev => {
+                    const newState = {...prev};
+                    delete newState[invoice.invoice_number];
+                    return newState;
+                });
+            }, 300);
         }
     };
 
@@ -634,39 +690,18 @@ export default function Invoices() {
                                                     <Button
                                                         variant={invoice.is_paid ? "default" : "outline"}
                                                         size="sm"
-                                                        onClick={async () => {
-                                                            const updatedInvoice = {
-                                                                ...invoice,
-                                                                is_paid: !invoice.is_paid,
-                                                                status: !invoice.is_paid ? 'paid' : 'unpaid'
-                                                            } as Invoice;
-
-                                                            try {
-                                                                // Delete and save updated invoice
-                                                                await deleteInvoiceFromFS(invoice.invoice_number);
-                                                                const success = await saveInvoice(updatedInvoice);
-
-                                                                if (success) {
-                                                                    // Update local state - this will trigger the filters to reapply
-                                                                    const updatedInvoices = invoices.map(inv =>
-                                                                        inv.invoice_number === invoice.invoice_number
-                                                                            ? updatedInvoice
-                                                                            : inv
-                                                                    );
-                                                                    setInvoices(updatedInvoices);
-
-                                                                    // No need to call loadInvoicesData here, as the useEffect will handle the filtering
-                                                                    showSuccess(`Invoice marked as ${updatedInvoice.is_paid ? 'paid' : 'unpaid'}`);
-                                                                }
-                                                            } catch (error) {
-                                                                console.error("Error updating invoice:", error);
-                                                                showError("Failed to update invoice status");
-                                                            }
-                                                        }}
+                                                        onClick={() => handleTogglePaidStatus(invoice)}
                                                         title={invoice.is_paid ? "Mark as Unpaid" : "Mark as Paid"}
-                                                        className="h-8 w-8 p-0"
+                                                        className={`h-8 w-8 p-0 transition-all duration-200 ${
+                                                            actionLoading[invoice.invoice_number] === 'updating' ? 'opacity-70' : ''
+                                                        }`}
+                                                        disabled={Boolean(actionLoading[invoice.invoice_number])}
                                                     >
-                                                        <CheckCircle className={`h-4 w-4 ${invoice.is_paid ? 'text-white' : 'text-gray-500'}`} />
+                                                        {actionLoading[invoice.invoice_number] === 'updating' ? (
+                                                            <RefreshCw className="h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <CheckCircle className={`h-4 w-4 ${invoice.is_paid ? 'text-white' : 'text-gray-500'}`} />
+                                                        )}
                                                     </Button>
                                                     <Button
                                                         variant="outline"
@@ -674,6 +709,7 @@ export default function Invoices() {
                                                         onClick={() => handleDownloadPDF(invoice)}
                                                         title="Download PDF"
                                                         className="h-8 w-8 p-0"
+                                                        disabled={Boolean(actionLoading[invoice.invoice_number])}
                                                     >
                                                         <FileText className="h-4 w-4" />
                                                     </Button>
@@ -682,9 +718,16 @@ export default function Invoices() {
                                                         size="sm"
                                                         onClick={() => handleDelete(invoice.invoice_number)}
                                                         title="Delete Invoice"
-                                                        className="h-8 w-8 p-0"
+                                                        className={`h-8 w-8 p-0 transition-all duration-200 ${
+                                                            actionLoading[invoice.invoice_number] === 'deleting' ? 'opacity-70' : ''
+                                                        }`}
+                                                        disabled={Boolean(actionLoading[invoice.invoice_number])}
                                                     >
-                                                        <Trash className="h-4 w-4" />
+                                                        {actionLoading[invoice.invoice_number] === 'deleting' ? (
+                                                            <RefreshCw className="h-4 w-4 animate-spin text-white" />
+                                                        ) : (
+                                                            <Trash className="h-4 w-4" />
+                                                        )}
                                                     </Button>
                                                 </div>
                                             </td>

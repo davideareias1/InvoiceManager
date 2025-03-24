@@ -30,6 +30,7 @@ export default function HomePage() {
         isSupported: isDriveSupported,
         isInitialized: isDriveInitialized,
         isAuthenticated: isDriveAuthenticated,
+        isLoading: isDriveLoading,
         isBackupEnabled,
         setIsBackupEnabled,
         requestPermission: requestDrivePermission,
@@ -40,6 +41,7 @@ export default function HomePage() {
     const { companyInfo } = useCompany();
 
     const [isLoading, setIsLoading] = useState(true);
+    const [showConnectionProcess, setShowConnectionProcess] = useState(false);
 
     // Reference to track if initial load is done
     const initialLoadDone = useRef(false);
@@ -56,6 +58,19 @@ export default function HomePage() {
             }
         }
     }, [isInitialized, hasPermission, loadInvoices]);
+
+    // Handle connection process visibility
+    useEffect(() => {
+        if (isDriveLoading) {
+            setShowConnectionProcess(true);
+        } else {
+            // Hide after a slight delay for smooth transition
+            const timer = setTimeout(() => {
+                setShowConnectionProcess(false);
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [isDriveLoading]);
 
     // Calculate analytics data
     const analytics = useMemo(() => {
@@ -132,23 +147,6 @@ export default function HomePage() {
         return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
     };
 
-    // Toggle Google Drive backup
-    const handleToggleBackup = async (enabled: boolean) => {
-        if (enabled && !isDriveAuthenticated) {
-            // Need to request permission first
-            const granted = await requestDrivePermission();
-            if (!granted) {
-                showError('Failed to authorize Google Drive access');
-                return;
-            }
-            showSuccess('Google Drive backup enabled');
-        }
-        setIsBackupEnabled(enabled);
-    };
-
-    // Colors for charts
-    const COLORS = ['#16a34a', '#f43f5e', '#3b82f6', '#f97316'];
-
     // Sync all local files to Google Drive
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncResults, setSyncResults] = useState<{
@@ -180,6 +178,28 @@ export default function HomePage() {
             setTimeout(() => setSyncResults(null), 10000);
         }
     };
+
+    // Toggle Google Drive backup
+    const handleToggleBackup = async (enabled: boolean) => {
+        if (enabled && !isDriveAuthenticated) {
+            // Need to request permission first
+            setShowConnectionProcess(true);
+            const granted = await requestDrivePermission();
+            
+            // Add short delay before hiding to allow for smooth transition
+            setTimeout(() => setShowConnectionProcess(false), 500);
+            
+            if (!granted) {
+                showError('Failed to authorize Google Drive access');
+                return;
+            }
+            showSuccess('Google Drive backup enabled');
+        }
+        setIsBackupEnabled(enabled);
+    };
+
+    // Colors for charts
+    const COLORS = ['#16a34a', '#f43f5e', '#3b82f6', '#f97316'];
 
     return (
         <div className="space-y-6">
@@ -241,7 +261,17 @@ export default function HomePage() {
                 </Card>
 
                 {/* Google Drive Backup Card */}
-                <Card className={`${!isDriveSupported ? 'border-red-300 bg-red-50' : (!isDriveAuthenticated && isBackupEnabled ? 'border-amber-300 bg-amber-50' : '')}`}>
+                <Card className={`${!isDriveSupported ? 'border-red-300 bg-red-50' : (!isDriveAuthenticated && isBackupEnabled ? 'border-amber-300 bg-amber-50' : '')} relative overflow-hidden`}>
+                    {/* Loading overlay for connection process */}
+                    {showConnectionProcess && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                            <div className="flex flex-col items-center p-6">
+                                <RefreshCw className="h-8 w-8 text-blue-600 animate-spin mb-2" />
+                                <p className="text-blue-800 font-medium">Connecting to Google Drive...</p>
+                            </div>
+                        </div>
+                    )}
+                    
                     <CardHeader className="pb-2">
                         <CardTitle className="text-base flex gap-2 items-center">
                             <Cloud className="h-5 w-5 text-blue-600" />
@@ -273,14 +303,14 @@ export default function HomePage() {
                                         <Switch
                                             checked={isBackupEnabled}
                                             onCheckedChange={handleToggleBackup}
-                                            disabled={!isDriveInitialized}
+                                            disabled={!isDriveInitialized || isDriveLoading || showConnectionProcess}
                                         />
                                     </div>
                                 </div>
                                 
                                 {/* Sync Results Display */}
                                 {syncResults && (
-                                    <div className="text-xs bg-blue-50 p-2 rounded border border-blue-200">
+                                    <div className="text-xs bg-blue-50 p-2 rounded border border-blue-200 animate-in fade-in duration-300">
                                         <p>Sync Results:</p>
                                         <ul className="list-disc list-inside mt-1">
                                             <li>Invoices: {syncResults.invoices}</li>
@@ -298,8 +328,16 @@ export default function HomePage() {
                                 onClick={() => requestDrivePermission()}
                                 variant="secondary"
                                 className="bg-blue-100 hover:bg-blue-200 text-blue-900"
+                                disabled={isDriveLoading || showConnectionProcess}
                             >
-                                Connect Google Drive
+                                {isDriveLoading || showConnectionProcess ? (
+                                    <>
+                                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                        Connecting...
+                                    </>
+                                ) : (
+                                    <>Connect Google Drive</>
+                                )}
                             </Button>
                         </CardFooter>
                     ) : isDriveAuthenticated ? (
@@ -307,13 +345,13 @@ export default function HomePage() {
                             <Button
                                 onClick={handleSyncFiles}
                                 variant="secondary"
-                                className="bg-blue-100 hover:bg-blue-200 text-blue-900"
-                                disabled={isSyncing || !isBackupEnabled}
+                                className="bg-blue-100 hover:bg-blue-200 text-blue-900 relative"
+                                disabled={isSyncing || !isBackupEnabled || isDriveLoading || showConnectionProcess}
                             >
                                 {isSyncing ? (
                                     <>
                                         <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                                        Syncing...
+                                        <span className="animate-pulse">Syncing...</span>
                                     </>
                                 ) : (
                                     <>
@@ -326,8 +364,14 @@ export default function HomePage() {
                                 onClick={() => signOutDrive()}
                                 variant="outline"
                                 size="sm"
+                                disabled={isDriveLoading || showConnectionProcess}
+                                className="transition-all duration-200"
                             >
-                                Disconnect
+                                {isDriveLoading || showConnectionProcess ? (
+                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    "Disconnect"
+                                )}
                             </Button>
                         </CardFooter>
                     ) : null}
