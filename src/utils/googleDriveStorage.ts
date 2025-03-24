@@ -526,35 +526,94 @@ export async function saveCustomerToGoogleDrive(customer: any): Promise<boolean>
 
         // Create a filename based on customer ID or name
         const filename = `customer_${customer.id || sanitizeFilename(customer.name)}${FILE_EXTENSION}`;
+        const content = JSON.stringify(customer, null, 2);
 
         // Check if file already exists
         const existingFileId = await findFile(filename, customersFolder);
         
-        // Prepare file metadata and content
-        const fileMetadata = {
-            name: filename,
-            parents: existingFileId ? undefined : [customersFolder]
-        };
-
-        const media = {
-            mimeType: 'application/json',
-            body: JSON.stringify(customer, null, 2)
-        };
-
         if (existingFileId) {
-            // Update existing file
-            await gapi.client.drive.files.update({
-                fileId: existingFileId,
-                resource: fileMetadata,
-                media: media
-            });
+            // Update existing file via multipart upload
+            const boundary = '-------314159265358979323846';
+            const delimiter = "\r\n--" + boundary + "\r\n";
+            const closeDelim = "\r\n--" + boundary + "--";
+
+            const contentType = 'application/json';
+            
+            const metadata = {
+                name: filename,
+                mimeType: contentType
+            };
+            
+            const multipartRequestBody =
+                delimiter +
+                'Content-Type: application/json\r\n\r\n' +
+                JSON.stringify(metadata) +
+                delimiter +
+                'Content-Type: ' + contentType + '\r\n\r\n' +
+                content +
+                closeDelim;
+                
+            // Using fetch directly for more control over the request
+            const token = gapi.client.getToken();
+            if (!token) throw new Error('Not authenticated');
+            
+            const response = await fetch(
+                `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': 'Bearer ' + token.access_token,
+                        'Content-Type': 'multipart/related; boundary="' + boundary + '"'
+                    },
+                    body: multipartRequestBody
+                }
+            );
+            
+            if (!response.ok) {
+                throw new Error(`Failed to update file: ${response.status} ${await response.text()}`);
+            }
         } else {
-            // Create new file
-            await gapi.client.drive.files.create({
-                resource: fileMetadata,
-                media: media,
-                fields: 'id'
-            });
+            // Create new file via multipart upload
+            const boundary = '-------314159265358979323846';
+            const delimiter = "\r\n--" + boundary + "\r\n";
+            const closeDelim = "\r\n--" + boundary + "--";
+
+            const contentType = 'application/json';
+            
+            const metadata = {
+                name: filename,
+                mimeType: contentType,
+                parents: [customersFolder]
+            };
+            
+            const multipartRequestBody =
+                delimiter +
+                'Content-Type: application/json\r\n\r\n' +
+                JSON.stringify(metadata) +
+                delimiter +
+                'Content-Type: ' + contentType + '\r\n\r\n' +
+                content +
+                closeDelim;
+                
+            // Using fetch directly for more control over the request
+            const token = gapi.client.getToken();
+            if (!token) throw new Error('Not authenticated');
+            
+            const response = await fetch(
+                'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + token.access_token,
+                        'Content-Type': 'multipart/related; boundary="' + boundary + '"'
+                    },
+                    body: multipartRequestBody
+                }
+            );
+            
+            if (!response.ok) {
+                throw new Error(`Failed to create file: ${response.status} ${await response.text()}`);
+            }
         }
 
         return true;
@@ -580,35 +639,94 @@ export async function saveProductToGoogleDrive(product: any): Promise<boolean> {
 
         // Create a filename based on product ID or name
         const filename = `product_${product.id || sanitizeFilename(product.name)}${FILE_EXTENSION}`;
+        const content = JSON.stringify(product, null, 2);
 
         // Check if file already exists
         const existingFileId = await findFile(filename, productsFolder);
         
-        // Prepare file metadata and content
-        const fileMetadata = {
-            name: filename,
-            parents: existingFileId ? undefined : [productsFolder]
-        };
-
-        const media = {
-            mimeType: 'application/json',
-            body: JSON.stringify(product, null, 2)
-        };
-
         if (existingFileId) {
-            // Update existing file
-            await gapi.client.drive.files.update({
-                fileId: existingFileId,
-                resource: fileMetadata,
-                media: media
-            });
+            // Update existing file via multipart upload
+            const boundary = '-------314159265358979323846';
+            const delimiter = "\r\n--" + boundary + "\r\n";
+            const closeDelim = "\r\n--" + boundary + "--";
+
+            const contentType = 'application/json';
+            
+            const metadata = {
+                name: filename,
+                mimeType: contentType
+            };
+            
+            const multipartRequestBody =
+                delimiter +
+                'Content-Type: application/json\r\n\r\n' +
+                JSON.stringify(metadata) +
+                delimiter +
+                'Content-Type: ' + contentType + '\r\n\r\n' +
+                content +
+                closeDelim;
+                
+            // Using fetch directly for more control over the request
+            const token = gapi.client.getToken();
+            if (!token) throw new Error('Not authenticated');
+            
+            const response = await fetch(
+                `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': 'Bearer ' + token.access_token,
+                        'Content-Type': 'multipart/related; boundary="' + boundary + '"'
+                    },
+                    body: multipartRequestBody
+                }
+            );
+            
+            if (!response.ok) {
+                throw new Error(`Failed to update file: ${response.status} ${await response.text()}`);
+            }
         } else {
-            // Create new file
-            await gapi.client.drive.files.create({
-                resource: fileMetadata,
-                media: media,
-                fields: 'id'
-            });
+            // Create new file via multipart upload
+            const boundary = '-------314159265358979323846';
+            const delimiter = "\r\n--" + boundary + "\r\n";
+            const closeDelim = "\r\n--" + boundary + "--";
+
+            const contentType = 'application/json';
+            
+            const metadata = {
+                name: filename,
+                mimeType: contentType,
+                parents: [productsFolder]
+            };
+            
+            const multipartRequestBody =
+                delimiter +
+                'Content-Type: application/json\r\n\r\n' +
+                JSON.stringify(metadata) +
+                delimiter +
+                'Content-Type: ' + contentType + '\r\n\r\n' +
+                content +
+                closeDelim;
+                
+            // Using fetch directly for more control over the request
+            const token = gapi.client.getToken();
+            if (!token) throw new Error('Not authenticated');
+            
+            const response = await fetch(
+                'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + token.access_token,
+                        'Content-Type': 'multipart/related; boundary="' + boundary + '"'
+                    },
+                    body: multipartRequestBody
+                }
+            );
+            
+            if (!response.ok) {
+                throw new Error(`Failed to create file: ${response.status} ${await response.text()}`);
+            }
         }
 
         return true;
@@ -644,35 +762,94 @@ export async function saveInvoiceToGoogleDrive(invoice: Invoice): Promise<boolea
 
         // Create a filename based on invoice number
         const filename = `invoice_${invoice.invoice_number}${FILE_EXTENSION}`;
+        const content = JSON.stringify(invoice, null, 2);
 
         // Check if file already exists
         const existingFileId = await findFile(filename, yearFolderId);
         
-        // Prepare file metadata and content
-        const fileMetadata = {
-            name: filename,
-            parents: existingFileId ? undefined : [yearFolderId]
-        };
-
-        const media = {
-            mimeType: 'application/json',
-            body: JSON.stringify(invoice, null, 2)
-        };
-
         if (existingFileId) {
-            // Update existing file
-            await gapi.client.drive.files.update({
-                fileId: existingFileId,
-                resource: fileMetadata,
-                media: media
-            });
+            // Update existing file via multipart upload
+            const boundary = '-------314159265358979323846';
+            const delimiter = "\r\n--" + boundary + "\r\n";
+            const closeDelim = "\r\n--" + boundary + "--";
+
+            const contentType = 'application/json';
+            
+            const metadata = {
+                name: filename,
+                mimeType: contentType
+            };
+            
+            const multipartRequestBody =
+                delimiter +
+                'Content-Type: application/json\r\n\r\n' +
+                JSON.stringify(metadata) +
+                delimiter +
+                'Content-Type: ' + contentType + '\r\n\r\n' +
+                content +
+                closeDelim;
+                
+            // Using fetch directly for more control over the request
+            const token = gapi.client.getToken();
+            if (!token) throw new Error('Not authenticated');
+            
+            const response = await fetch(
+                `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': 'Bearer ' + token.access_token,
+                        'Content-Type': 'multipart/related; boundary="' + boundary + '"'
+                    },
+                    body: multipartRequestBody
+                }
+            );
+            
+            if (!response.ok) {
+                throw new Error(`Failed to update file: ${response.status} ${await response.text()}`);
+            }
         } else {
-            // Create new file
-            await gapi.client.drive.files.create({
-                resource: fileMetadata,
-                media: media,
-                fields: 'id'
-            });
+            // Create new file via multipart upload
+            const boundary = '-------314159265358979323846';
+            const delimiter = "\r\n--" + boundary + "\r\n";
+            const closeDelim = "\r\n--" + boundary + "--";
+
+            const contentType = 'application/json';
+            
+            const metadata = {
+                name: filename,
+                mimeType: contentType,
+                parents: [yearFolderId]
+            };
+            
+            const multipartRequestBody =
+                delimiter +
+                'Content-Type: application/json\r\n\r\n' +
+                JSON.stringify(metadata) +
+                delimiter +
+                'Content-Type: ' + contentType + '\r\n\r\n' +
+                content +
+                closeDelim;
+                
+            // Using fetch directly for more control over the request
+            const token = gapi.client.getToken();
+            if (!token) throw new Error('Not authenticated');
+            
+            const response = await fetch(
+                'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + token.access_token,
+                        'Content-Type': 'multipart/related; boundary="' + boundary + '"'
+                    },
+                    body: multipartRequestBody
+                }
+            );
+            
+            if (!response.ok) {
+                throw new Error(`Failed to create file: ${response.status} ${await response.text()}`);
+            }
         }
 
         return true;
