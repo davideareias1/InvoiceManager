@@ -56,14 +56,9 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
     const [gApiLoaded, setGApiLoaded] = useState(false);
     const [gisLoaded, setGisLoaded] = useState(false);
 
-    // Get the FileSystem child context if available
-    let fileSystemChildContext: FileSystemChildContextType | null = null;
-    try {
-        fileSystemChildContext = useFileSystemChild();
-    } catch (error) {
-        // This happens when not within a FileSystemProvider, which is fine
-        console.warn('GoogleDriveProvider not wrapped in FileSystemProvider');
-    }
+    // Always call the hook unconditionally
+    const fileSystemChildContext = useFileSystemChild();
+    const hasFileSystemContext = fileSystemChildContext !== null && fileSystemChildContext !== undefined;
 
     // Initialize on client side only
     useEffect(() => {
@@ -139,7 +134,7 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
 
     // Register backup functions with FileSystemContext when backup is enabled/disabled
     useEffect(() => {
-        if (!fileSystemChildContext || !isInitialized) {
+        if (!hasFileSystemContext || !isInitialized) {
             return;
         }
 
@@ -157,7 +152,7 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         
         // Only re-run this effect when the enabled state or authentication state changes
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isBackupEnabled, isAuthenticated, isInitialized, fileSystemChildContext]);
+    }, [isBackupEnabled, isAuthenticated, isInitialized, hasFileSystemContext]);
 
     // Save backup preference to localStorage
     useEffect(() => {
