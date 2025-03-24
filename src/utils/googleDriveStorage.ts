@@ -14,6 +14,7 @@ const APP_FOLDER_NAME = 'InvoiceManager';
 const CLIENT_ID = process.env.NEXT_PUBLIC_CLIENT_ID || '';
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
+// Use the more limited scope that should be sufficient for app folder access
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
 // Show warning if credentials are missing
@@ -61,45 +62,94 @@ export async function isGoogleDriveAuthenticated(): Promise<boolean> {
 }
 
 /**
- * Initialize Google API client
+ * Initialize the Google Drive API
  */
 export async function initializeGoogleDriveApi(): Promise<boolean> {
-    if (!isGoogleDriveSupported()) {
+    if (!gapi) {
+        console.error('Google API library (gapi) not loaded');
         return false;
     }
 
     try {
-        // Wait for both GAPI and GIS to be initialized
-        if (!gapiInited || !gisInited) {
-            console.error('Cannot initialize Google Drive API: APIs not loaded', { gapiInited, gisInited });
+        // Initialize the client
+        await new Promise<void>((resolve, reject) => {
+            try {
+                // Define the callback function separately
+                const callbackFn = () => {
+                    console.log('Google API client loaded');
+                    resolve();
+                };
+
+                // TypeScript doesn't handle gapi.load properly, so we need to use any
+                (gapi.load as any)('client', {
+                    callback: callbackFn,
+                    onerror: (error: any) => {
+                        console.error('Error loading Google API client:', error);
+                        reject(error);
+                    },
+                    timeout: 10000,
+                    ontimeout: () => {
+                        console.error('Timeout loading Google API client');
+                        reject(new Error('Timeout loading Google API client'));
+                    }
+                });
+            } catch (error) {
+                console.error('Error in gapi.load:', error);
+                reject(error);
+            }
+        });
+
+        // Initialize the client with the API key and discovery document
+        try {
+            await gapi.client.init({
+                apiKey: API_KEY,
+                discoveryDocs: [DISCOVERY_DOC],
+            });
+            console.log('Google API client initialized');
+        } catch (error) {
+            console.error('Error initializing Google API client:', error);
             return false;
         }
 
-        // Additional check to ensure client is initialized
-        if (!gapi.client) {
-            console.error('gapi.client is not initialized');
-            
-            // Try to initialize it manually
+        // Initialize token client
+        if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
             try {
-                await gapi.client.init({
-                    apiKey: API_KEY,
-                    discoveryDocs: [DISCOVERY_DOC],
+                tokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: CLIENT_ID,
+                    scope: SCOPES,
+                    callback: '' as any, // Will be set later when we're ready to handle it
                 });
-                console.log('Manually initialized gapi.client');
+                console.log('Google Identity Services initialized');
             } catch (error) {
-                console.error('Failed to manually initialize gapi.client', error);
+                console.error('Error initializing Google Identity Services:', error);
                 return false;
             }
+        } else {
+            console.error('Google accounts API not available');
+            return false;
         }
+
+        gapiInited = true;
+        gisInited = true;
 
         // Check if we're already authenticated
-        if (await isGoogleDriveAuthenticated()) {
-            // Initialize directory structure if authenticated
-            await initializeDirectoryStructure();
-            return true;
+        try {
+            const token = gapi.client.getToken();
+            const authenticated = token !== null;
+            if (authenticated) {
+                try {
+                    await initializeDirectoryStructure();
+                } catch (error) {
+                    console.error('Error initializing directory structure:', error);
+                    // Continue even if this fails
+                }
+            }
+        } catch (error) {
+            console.error('Error checking authentication:', error);
+            // Continue even if this fails
         }
 
-        return false;
+        return true;
     } catch (error) {
         console.error('Error initializing Google Drive API:', error);
         return false;
@@ -206,57 +256,59 @@ export function loadGoogleIdentityScript(): Promise<void> {
 }
 
 /**
- * Request Google Drive authorization
+ * Request authorization to access Google Drive
  */
 export async function requestGoogleDriveAuthorization(): Promise<boolean> {
-    if (!isGoogleDriveSupported() || !gapiInited || !gisInited) {
-        console.error('Cannot request authorization: API not initialized', { gapiInited, gisInited });
+    if (!isGoogleDriveSupported() || !gapi || !window.google || !gapi.client) {
+        console.error('Google API not fully initialized');
         return false;
-    }
-
-    if (!tokenClient) {
-        console.error('TokenClient is not initialized');
-        // Try to initialize it if it's not set yet
-        try {
-            if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
-                tokenClient = google.accounts.oauth2.initTokenClient({
-                    client_id: CLIENT_ID,
-                    scope: SCOPES,
-                    callback: '', // Will be set when requesting auth
-                });
-            } else {
-                console.error('Google accounts still not available');
-                return false;
-            }
-        } catch (error) {
-            console.error('Error initializing token client:', error);
-            return false;
-        }
     }
 
     return new Promise((resolve) => {
         try {
+            // Ensure tokenClient is initialized
+            if (!tokenClient) {
+                console.error('Token client not initialized');
+                resolve(false);
+                return;
+            }
+
             tokenClient.callback = async (resp: any) => {
-                if (resp.error !== undefined) {
+                if (resp.error) {
                     console.error('Authorization error:', resp);
                     resolve(false);
                     return;
                 }
                 
-                // Initialize directory structure after successful auth
-                await initializeDirectoryStructure();
-                resolve(true);
+                try {
+                    // Initialize directory structure after successful authorization
+                    await initializeDirectoryStructure();
+                    console.log('Authorization successful');
+                    resolve(true);
+                } catch (error) {
+                    console.error('Error after authorization:', error);
+                    resolve(false);
+                }
             };
 
+            // Open the authorization popup
             if (gapi.client.getToken() === null) {
-                // Prompt the user to select a Google Account and ask for consent
+                // Request an access token for the user. 
+                // Note: The 'prompt' parameter ensures a fresh popup rather than reusing one
                 tokenClient.requestAccessToken({ prompt: 'consent' });
             } else {
-                // Skip display of account chooser for an existing session
-                tokenClient.requestAccessToken({ prompt: '' });
+                // Skip if already authenticated
+                console.log('Already authenticated with Google Drive');
+                initializeDirectoryStructure()
+                    .then(() => resolve(true))
+                    .catch((error) => {
+                        console.error('Error initializing directory structure with existing token:', error);
+                        // Try re-authenticating if we get an error with the existing token
+                        tokenClient.requestAccessToken({ prompt: 'consent' });
+                    });
             }
         } catch (error) {
-            console.error('Error requesting authorization:', error);
+            console.error('Error in authorization request:', error);
             resolve(false);
         }
     });
