@@ -40,11 +40,20 @@ export default function HomePage() {
 
     const { companyInfo } = useCompany();
 
+    // More specific loading states
     const [isLoading, setIsLoading] = useState(true);
-    const [showConnectionProcess, setShowConnectionProcess] = useState(false);
+    const [showConnectionProcess, setShowConnectionProcess] = useState(true); // Start as true to show loading initially
+    const [fileSystemProcessing, setFileSystemProcessing] = useState(true); // Track file system permission process
 
     // Reference to track if initial load is done
     const initialLoadDone = useRef(false);
+
+    // Track initialization steps
+    const driveInitSteps = useRef({
+        apiInitialized: false,
+        authChecked: false,
+        loaded: false
+    });
 
     // Load invoices once when component mounts
     useEffect(() => {
@@ -52,25 +61,35 @@ export default function HomePage() {
         if (isInitialized) {
             if (hasPermission) {
                 loadInvoices()
-                    .finally(() => setIsLoading(false));
+                    .finally(() => {
+                        setIsLoading(false);
+                        setFileSystemProcessing(false);
+                    });
             } else {
                 setIsLoading(false);
+                setFileSystemProcessing(false);
             }
         }
     }, [isInitialized, hasPermission, loadInvoices]);
 
-    // Handle connection process visibility
+    // Handle connection process visibility - wait for all critical steps to complete
     useEffect(() => {
-        if (isDriveLoading) {
-            setShowConnectionProcess(true);
-        } else {
-            // Hide after a slight delay for smooth transition
+        // Only hide the loading indicator when all critical conditions are met
+        if (
+            isDriveInitialized && 
+            (isDriveAuthenticated !== undefined) && 
+            !isDriveLoading
+        ) {
+            // Always add a slight delay before hiding for smooth transition
             const timer = setTimeout(() => {
                 setShowConnectionProcess(false);
+                driveInitSteps.current.loaded = true;
             }, 500);
             return () => clearTimeout(timer);
+        } else {
+            setShowConnectionProcess(true);
         }
-    }, [isDriveLoading]);
+    }, [isDriveInitialized, isDriveAuthenticated, isDriveLoading]);
 
     // Calculate analytics data
     const analytics = useMemo(() => {
@@ -186,8 +205,12 @@ export default function HomePage() {
             setShowConnectionProcess(true);
             const granted = await requestDrivePermission();
             
-            // Add short delay before hiding to allow for smooth transition
-            setTimeout(() => setShowConnectionProcess(false), 500);
+            // Only hide after a delay to ensure everything is loaded
+            setTimeout(() => {
+                if (isDriveInitialized && (isDriveAuthenticated !== undefined)) {
+                    setShowConnectionProcess(false);
+                }
+            }, 1000);
             
             if (!granted) {
                 showError('Failed to authorize Google Drive access');
@@ -219,7 +242,17 @@ export default function HomePage() {
             {/* Storage Cards - show options for local storage and Google Drive backup */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Local Storage Card */}
-                <Card className={`${!isSupported ? 'border-red-300 bg-red-50' : (!hasPermission ? 'border-amber-300 bg-amber-50' : '')}`}>
+                <Card className={`${!isSupported ? 'border-red-300 bg-red-50' : (!hasPermission ? 'border-amber-300 bg-amber-50' : '')} relative overflow-hidden`}>
+                    {/* Loading overlay for file system permission process */}
+                    {fileSystemProcessing && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                            <div className="flex flex-col items-center p-6">
+                                <RefreshCw className="h-8 w-8 text-amber-600 animate-spin mb-2" />
+                                <p className="text-amber-800 font-medium">Checking storage permissions...</p>
+                            </div>
+                        </div>
+                    )}
+                    
                     <CardHeader className="pb-2">
                         <CardTitle className="text-base flex gap-2 items-center">
                             <HardDrive className="h-5 w-5 text-slate-600" />
@@ -250,11 +283,24 @@ export default function HomePage() {
                     {!isSupported ? null : !hasPermission ? (
                         <CardFooter className="pt-0">
                             <Button
-                                onClick={requestPermission}
+                                onClick={() => {
+                                    setFileSystemProcessing(true);
+                                    requestPermission().finally(() => {
+                                        setTimeout(() => setFileSystemProcessing(false), 500);
+                                    });
+                                }}
                                 variant="secondary"
                                 className="bg-amber-100 hover:bg-amber-200 text-amber-900"
+                                disabled={fileSystemProcessing}
                             >
-                                Grant Access
+                                {fileSystemProcessing ? (
+                                    <>
+                                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                        Processing...
+                                    </>
+                                ) : (
+                                    "Grant Access"
+                                )}
                             </Button>
                         </CardFooter>
                     ) : null}
@@ -267,7 +313,10 @@ export default function HomePage() {
                         <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
                             <div className="flex flex-col items-center p-6">
                                 <RefreshCw className="h-8 w-8 text-blue-600 animate-spin mb-2" />
-                                <p className="text-blue-800 font-medium">Connecting to Google Drive...</p>
+                                <p className="text-blue-800 font-medium">Initializing Google Drive...</p>
+                                <div className="text-xs text-blue-600 mt-2 max-w-[250px] text-center">
+                                    Loading API, authenticating, and checking permissions
+                                </div>
                             </div>
                         </div>
                     )}
@@ -325,7 +374,10 @@ export default function HomePage() {
                     {!isDriveSupported ? null : !isDriveAuthenticated && isBackupEnabled ? (
                         <CardFooter className="pt-0">
                             <Button
-                                onClick={() => requestDrivePermission()}
+                                onClick={() => {
+                                    setShowConnectionProcess(true);
+                                    requestDrivePermission();
+                                }}
                                 variant="secondary"
                                 className="bg-blue-100 hover:bg-blue-200 text-blue-900"
                                 disabled={isDriveLoading || showConnectionProcess}
@@ -361,7 +413,12 @@ export default function HomePage() {
                                 )}
                             </Button>
                             <Button
-                                onClick={() => signOutDrive()}
+                                onClick={() => {
+                                    setShowConnectionProcess(true);
+                                    signOutDrive().finally(() => {
+                                        setTimeout(() => setShowConnectionProcess(false), 500);
+                                    });
+                                }}
                                 variant="outline"
                                 size="sm"
                                 disabled={isDriveLoading || showConnectionProcess}
