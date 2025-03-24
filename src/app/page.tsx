@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileText, Settings, BarChart2, CheckCircle, XCircle, ArrowUpRight, HardDrive, Shield, Home, Users, PieChart, Cloud } from 'lucide-react';
+import { FileText, Settings, BarChart2, CheckCircle, XCircle, ArrowUpRight, HardDrive, Shield, Home, Users, PieChart, Cloud, RefreshCw } from 'lucide-react';
 import { useFileSystem } from '../contexts/FileSystemContext';
 import { useCompany } from '../contexts/CompanyContext';
 import { useGoogleDrive } from '../contexts/GoogleDriveContext';
@@ -33,7 +33,8 @@ export default function HomePage() {
         isBackupEnabled,
         setIsBackupEnabled,
         requestPermission: requestDrivePermission,
-        signOut: signOutDrive
+        signOut: signOutDrive,
+        syncAllFiles
     } = useGoogleDrive();
 
     const { companyInfo } = useCompany();
@@ -148,11 +149,43 @@ export default function HomePage() {
     // Colors for charts
     const COLORS = ['#16a34a', '#f43f5e', '#3b82f6', '#f97316'];
 
+    // Sync all local files to Google Drive
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [syncResults, setSyncResults] = useState<{
+        invoices: number;
+        customers: number;
+        products: number;
+        success: boolean;
+    } | null>(null);
+
+    const handleSyncFiles = async () => {
+        if (!isDriveAuthenticated || !isBackupEnabled) return;
+        
+        try {
+            setIsSyncing(true);
+            const results = await syncAllFiles();
+            setSyncResults(results);
+            
+            if (results.success) {
+                showSuccess(`Synced ${results.invoices} invoices, ${results.customers} customers, and ${results.products} products to Google Drive.`);
+            } else {
+                showError('Error syncing files to Google Drive.');
+            }
+        } catch (error) {
+            console.error('Error syncing files:', error);
+            showError('Error syncing files to Google Drive.');
+        } finally {
+            setIsSyncing(false);
+            // Auto-clear results after 10 seconds
+            setTimeout(() => setSyncResults(null), 10000);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome to E-Rechnung</h1>
+                    <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome to Invoice Manager</h1>
                     <p className="text-muted-foreground">Modern invoice management for German businesses</p>
                 </div>
                 <Button asChild>
@@ -229,19 +262,33 @@ export default function HomePage() {
                                     : "Enable Google Drive backup to keep your data safe in the cloud."}
                         </p>
                         {isDriveSupported && (
-                            <div className="flex items-center space-x-2">
-                                <Badge variant="outline" className={`font-normal ${isDriveAuthenticated ? "bg-green-100 text-green-800" : ""}`}>
-                                    {isDriveAuthenticated ? 'Connected' : 'Not Connected'}
-                                </Badge>
-                                
+                            <div className="flex flex-col space-y-3">
                                 <div className="flex items-center space-x-2">
-                                    <span className="text-sm">Backup Enabled:</span>
-                                    <Switch
-                                        checked={isBackupEnabled}
-                                        onCheckedChange={handleToggleBackup}
-                                        disabled={!isDriveInitialized}
-                                    />
+                                    <Badge variant="outline" className={`font-normal ${isDriveAuthenticated ? "bg-green-100 text-green-800" : ""}`}>
+                                        {isDriveAuthenticated ? 'Connected' : 'Not Connected'}
+                                    </Badge>
+                                    
+                                    <div className="flex items-center space-x-2">
+                                        <span className="text-sm">Backup Enabled:</span>
+                                        <Switch
+                                            checked={isBackupEnabled}
+                                            onCheckedChange={handleToggleBackup}
+                                            disabled={!isDriveInitialized}
+                                        />
+                                    </div>
                                 </div>
+                                
+                                {/* Sync Results Display */}
+                                {syncResults && (
+                                    <div className="text-xs bg-blue-50 p-2 rounded border border-blue-200">
+                                        <p>Sync Results:</p>
+                                        <ul className="list-disc list-inside mt-1">
+                                            <li>Invoices: {syncResults.invoices}</li>
+                                            <li>Customers: {syncResults.customers}</li>
+                                            <li>Products: {syncResults.products}</li>
+                                        </ul>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </CardContent>
@@ -256,7 +303,25 @@ export default function HomePage() {
                             </Button>
                         </CardFooter>
                     ) : isDriveAuthenticated ? (
-                        <CardFooter className="pt-0">
+                        <CardFooter className="pt-0 flex flex-wrap gap-2">
+                            <Button
+                                onClick={handleSyncFiles}
+                                variant="secondary"
+                                className="bg-blue-100 hover:bg-blue-200 text-blue-900"
+                                disabled={isSyncing || !isBackupEnabled}
+                            >
+                                {isSyncing ? (
+                                    <>
+                                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                        Syncing...
+                                    </>
+                                ) : (
+                                    <>
+                                        <RefreshCw className="mr-2 h-4 w-4" />
+                                        Sync All Files
+                                    </>
+                                )}
+                            </Button>
                             <Button
                                 onClick={() => signOutDrive()}
                                 variant="outline"

@@ -1,9 +1,10 @@
 'use client';
 
 import { Invoice } from '../interfaces';
+import { loadCustomersFromFiles, loadProductsFromFiles, loadInvoicesFromFiles } from './fileSystemStorage';
 
 // Constants
-const DIRECTORY_HANDLE_KEY = 'google-drive-token';
+const LOCAL_STORAGE_TOKEN_KEY = 'google-drive-auth-token';
 const FILE_EXTENSION = '.json';
 const CUSTOMERS_DIRECTORY = 'customers';
 const PRODUCTS_DIRECTORY = 'products';
@@ -57,6 +58,32 @@ export async function isGoogleDriveAuthenticated(): Promise<boolean> {
         return gapi.client.getToken() !== null;
     } catch (error) {
         console.error('Error checking Google Drive authentication:', error);
+        return false;
+    }
+}
+
+/**
+ * Verify if the token is still valid and refresh if needed
+ */
+async function verifyAndRefreshToken(token: any): Promise<boolean> {
+    if (!token || !token.access_token) {
+        return false;
+    }
+    
+    try {
+        // Try to make a simple request to verify the token
+        await gapi.client.drive.files.list({
+            pageSize: 1,
+            fields: 'files(name)'
+        });
+        
+        // If no error, token is valid
+        return true;
+    } catch (error) {
+        console.warn('Token validation failed, may need to reauthenticate:', error);
+        // If token is expired or invalid, clear it
+        localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
+        gapi.client.setToken('');
         return false;
     }
 }
@@ -131,6 +158,25 @@ export async function initializeGoogleDriveApi(): Promise<boolean> {
 
         gapiInited = true;
         gisInited = true;
+
+        // Check if we have a stored token in localStorage
+        try {
+            const savedToken = localStorage.getItem(LOCAL_STORAGE_TOKEN_KEY);
+            if (savedToken) {
+                const parsedToken = JSON.parse(savedToken);
+                gapi.client.setToken(parsedToken);
+                console.log('Restored Google Drive authentication token from localStorage');
+                
+                // Verify if the token is still valid
+                const isValid = await verifyAndRefreshToken(parsedToken);
+                if (!isValid) {
+                    console.warn('Restored token is no longer valid, will need to reauthenticate');
+                }
+            }
+        } catch (error) {
+            console.error('Error restoring token from localStorage:', error);
+            // Continue even if this fails
+        }
 
         // Check if we're already authenticated
         try {
@@ -221,6 +267,26 @@ export function loadGoogleIdentityScript(): Promise<void> {
                 scope: SCOPES,
                 callback: '', // Will be set when requesting auth
             });
+            
+            // Check if we have a stored token in localStorage
+            try {
+                const savedToken = localStorage.getItem(LOCAL_STORAGE_TOKEN_KEY);
+                if (savedToken && gapi && gapi.client) {
+                    const parsedToken = JSON.parse(savedToken);
+                    gapi.client.setToken(parsedToken);
+                    console.log('Restored Google Drive token during GIS load');
+                    
+                    // Validate token asynchronously - no need to wait for result
+                    verifyAndRefreshToken(parsedToken).then(isValid => {
+                        if (!isValid) {
+                            console.warn('Token from localStorage is invalid or expired');
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error restoring token during GIS load:', error);
+            }
+            
             resolve();
             return;
         }
@@ -240,6 +306,26 @@ export function loadGoogleIdentityScript(): Promise<void> {
                     });
                     console.log('Google Identity Services initialized');
                     gisInited = true;
+                    
+                    // Try to restore token here too
+                    try {
+                        const savedToken = localStorage.getItem(LOCAL_STORAGE_TOKEN_KEY);
+                        if (savedToken && gapi && gapi.client) {
+                            const parsedToken = JSON.parse(savedToken);
+                            gapi.client.setToken(parsedToken);
+                            console.log('Restored Google Drive token after GIS script load');
+                            
+                            // Validate token asynchronously
+                            verifyAndRefreshToken(parsedToken).then(isValid => {
+                                if (!isValid) {
+                                    console.warn('Token restored after script load is invalid or expired');
+                                }
+                            });
+                        }
+                    } catch (error) {
+                        console.error('Error restoring token after GIS load:', error);
+                    }
+                    
                     resolve();
                 } else {
                     console.error('Google accounts not available after loading script');
@@ -281,6 +367,13 @@ export async function requestGoogleDriveAuthorization(): Promise<boolean> {
                 }
                 
                 try {
+                    // Save token to localStorage for persistence
+                    const token = gapi.client.getToken();
+                    if (token) {
+                        localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, JSON.stringify(token));
+                        console.log('Saved Google Drive token to localStorage');
+                    }
+                    
                     // Initialize directory structure after successful authorization
                     await initializeDirectoryStructure();
                     console.log('Authorization successful');
@@ -304,6 +397,7 @@ export async function requestGoogleDriveAuthorization(): Promise<boolean> {
                     .catch((error) => {
                         console.error('Error initializing directory structure with existing token:', error);
                         // Try re-authenticating if we get an error with the existing token
+                        localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
                         tokenClient.requestAccessToken({ prompt: 'consent' });
                     });
             }
@@ -328,6 +422,11 @@ export async function signOutGoogleDrive(): Promise<boolean> {
             google.accounts.oauth2.revoke(token.access_token);
             gapi.client.setToken('');
             folderIds = {}; // Clear folder IDs
+            
+            // Clear the token from localStorage
+            localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
+            console.log('Removed Google Drive token from localStorage');
+            
             return true;
         }
         return false;
@@ -929,4 +1028,72 @@ async function findFile(fileName: string, folderId: string): Promise<string | nu
 function sanitizeFilename(name: string): string {
     // Replace special characters with underscore
     return name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+}
+
+/**
+ * Sync all existing local files to Google Drive
+ * This will scan all local files and upload them to Google Drive if they don't exist there already
+ */
+export async function syncAllFilesToGoogleDrive(): Promise<{
+    invoices: number;
+    customers: number;
+    products: number;
+    success: boolean;
+}> {
+    if (!isGoogleDriveSupported() || !await isGoogleDriveAuthenticated()) {
+        return { invoices: 0, customers: 0, products: 0, success: false };
+    }
+
+    try {
+        // Make sure directory structure is initialized
+        await initializeDirectoryStructure();
+
+        // Results counters
+        let invoicesCount = 0;
+        let customersCount = 0;
+        let productsCount = 0;
+
+        // First sync customers
+        try {
+            const customers = await loadCustomersFromFiles();
+            for (const customer of customers) {
+                const result = await saveCustomerToGoogleDrive(customer);
+                if (result) customersCount++;
+            }
+        } catch (error) {
+            console.error('Error syncing customers to Google Drive:', error);
+        }
+
+        // Then sync products
+        try {
+            const products = await loadProductsFromFiles();
+            for (const product of products) {
+                const result = await saveProductToGoogleDrive(product);
+                if (result) productsCount++;
+            }
+        } catch (error) {
+            console.error('Error syncing products to Google Drive:', error);
+        }
+
+        // Finally sync invoices
+        try {
+            const invoices = await loadInvoicesFromFiles();
+            for (const invoice of invoices) {
+                const result = await saveInvoiceToGoogleDrive(invoice);
+                if (result) invoicesCount++;
+            }
+        } catch (error) {
+            console.error('Error syncing invoices to Google Drive:', error);
+        }
+
+        return {
+            invoices: invoicesCount,
+            customers: customersCount,
+            products: productsCount,
+            success: true
+        };
+    } catch (error) {
+        console.error('Error syncing files to Google Drive:', error);
+        return { invoices: 0, customers: 0, products: 0, success: false };
+    }
 } 

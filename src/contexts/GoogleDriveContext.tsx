@@ -14,6 +14,7 @@ import {
     deleteInvoiceFromGoogleDrive,
     saveCustomerToGoogleDrive,
     saveProductToGoogleDrive,
+    syncAllFilesToGoogleDrive
 } from '../utils/googleDriveStorage';
 import { Invoice } from '../interfaces';
 import { useFileSystemChild, FileSystemChildContextType } from './FileSystemContext';
@@ -31,6 +32,12 @@ interface GoogleDriveContextType {
     deleteInvoice: (invoiceNumber: string) => Promise<boolean>;
     saveCustomer: (customer: any) => Promise<boolean>;
     saveProduct: (product: any) => Promise<boolean>;
+    syncAllFiles: () => Promise<{
+        invoices: number;
+        customers: number;
+        products: number;
+        success: boolean;
+    }>;
 }
 
 const GoogleDriveContext = createContext<GoogleDriveContextType | undefined>(undefined);
@@ -265,6 +272,38 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         }
     }, [isSupported, isAuthenticated, isBackupEnabled]);
 
+    // Sync all files to Google Drive
+    const syncAllFiles = useCallback(async (): Promise<{
+        invoices: number;
+        customers: number;
+        products: number;
+        success: boolean;
+    }> => {
+        if (!isSupported || !isAuthenticated || !isBackupEnabled) {
+            return {
+                invoices: 0,
+                customers: 0,
+                products: 0,
+                success: false
+            };
+        }
+
+        try {
+            setIsLoading(true);
+            const result = await syncAllFilesToGoogleDrive();
+            setIsLoading(false);
+            return result;
+        } catch (error) {
+            console.error('Error syncing all files to Google Drive:', error);
+            return {
+                invoices: 0,
+                customers: 0,
+                products: 0,
+                success: false
+            };
+        }
+    }, [isSupported, isAuthenticated, isBackupEnabled]);
+
     const value = {
         isSupported,
         isInitialized,
@@ -277,7 +316,8 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         saveInvoice,
         deleteInvoice,
         saveCustomer,
-        saveProduct
+        saveProduct,
+        syncAllFiles
     };
 
     return (
