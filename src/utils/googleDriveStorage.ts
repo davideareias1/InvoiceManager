@@ -2,6 +2,7 @@
 
 import { Invoice } from '../interfaces';
 import { loadCustomersFromFiles, loadProductsFromFiles, loadInvoicesFromFiles } from './fileSystemStorage';
+import md5 from 'blueimp-md5'; // Added import for md5 hashing
 
 // Constants
 const LOCAL_STORAGE_TOKEN_KEY = 'google-drive-auth-token';
@@ -511,8 +512,104 @@ async function findOrCreateFolder(folderName: string, parentId?: string): Promis
 }
 
 /**
- * Save a customer to Google Drive
+ * Find a file by name in a specific folder and return its ID and MD5 checksum
  */
+async function findFile(fileName: string, folderId: string): Promise<{ id: string; md5Checksum: string } | null> {
+    try {
+        const response = await gapi.client.drive.files.list({
+            q: `name='${fileName}' and '${folderId}' in parents and trashed=false`,
+            fields: 'files(id, name, md5Checksum)', // Added md5Checksum to fields
+            spaces: 'drive'
+        });
+
+        const files = response.result.files;
+        if (files && files.length > 0 && files[0].id && files[0].md5Checksum) {
+            // Return ID and MD5 checksum
+            return { id: files[0].id, md5Checksum: files[0].md5Checksum };
+        }
+        return null;
+    } catch (error) {
+        console.error(`Error finding file ${fileName}:`, error);
+        return null;
+    }
+}
+
+/**
+ * Helper function to sanitize filenames
+ */
+function sanitizeFilename(name: string): string {
+    // Replace special characters with underscore
+    return name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+}
+
+/**
+ * Sync all existing local files to Google Drive
+ * This will scan all local files and upload them to Google Drive if they don't exist there already
+ */
+export async function syncAllFilesToGoogleDrive(): Promise<{
+    invoices: number;
+    customers: number;
+    products: number;
+    success: boolean;
+}> {
+    if (!isGoogleDriveSupported() || !await isGoogleDriveAuthenticated()) {
+        return { invoices: 0, customers: 0, products: 0, success: false };
+    }
+
+    try {
+        // Make sure directory structure is initialized
+        await initializeDirectoryStructure();
+
+        // Results counters
+        let invoicesCount = 0;
+        let customersCount = 0;
+        let productsCount = 0;
+
+        // First sync customers
+        try {
+            const customers = await loadCustomersFromFiles();
+            for (const customer of customers) {
+                const result = await saveCustomerToGoogleDrive(customer);
+                if (result) customersCount++;
+            }
+        } catch (error) {
+            console.error('Error syncing customers to Google Drive:', error);
+        }
+
+        // Then sync products
+        try {
+            const products = await loadProductsFromFiles();
+            for (const product of products) {
+                const result = await saveProductToGoogleDrive(product);
+                if (result) productsCount++;
+            }
+        } catch (error) {
+            console.error('Error syncing products to Google Drive:', error);
+        }
+
+        // Finally sync invoices
+        try {
+            const invoices = await loadInvoicesFromFiles();
+            for (const invoice of invoices) {
+                const result = await saveInvoiceToGoogleDrive(invoice);
+                if (result) invoicesCount++;
+            }
+        } catch (error) {
+            console.error('Error syncing invoices to Google Drive:', error);
+        }
+
+        return {
+            invoices: invoicesCount,
+            customers: customersCount,
+            products: productsCount,
+            success: true
+        };
+    } catch (error) {
+        console.error('Error syncing files to Google Drive:', error);
+        return { invoices: 0, customers: 0, products: 0, success: false };
+    }
+}
+
 export async function saveCustomerToGoogleDrive(customer: any): Promise<boolean> {
     if (!isGoogleDriveSupported() || !await isGoogleDriveAuthenticated()) {
         return false;
@@ -527,23 +624,31 @@ export async function saveCustomerToGoogleDrive(customer: any): Promise<boolean>
         // Create a filename based on customer ID or name
         const filename = `customer_${customer.id || sanitizeFilename(customer.name)}${FILE_EXTENSION}`;
         const content = JSON.stringify(customer, null, 2);
+        const localMd5Checksum = md5(content); // Calculate local MD5 checksum
 
-        // Check if file already exists
-        const existingFileId = await findFile(filename, customersFolder);
-        
-        if (existingFileId) {
-            // Update existing file via multipart upload
+        // Check if file already exists and get its checksum
+        const existingFile = await findFile(filename, customersFolder);
+
+        if (existingFile) {
+            // Compare checksums
+            if (existingFile.md5Checksum === localMd5Checksum) {
+                console.log(`Customer file ${filename} is already up-to-date in Google Drive.`);
+                return true; // Skip update if content is the same
+            }
+
+            console.log(`Updating existing customer file ${filename} in Google Drive.`);
+            // Update existing file via multipart upload (only if checksums differ)
             const boundary = '-------314159265358979323846';
             const delimiter = "\r\n--" + boundary + "\r\n";
             const closeDelim = "\r\n--" + boundary + "--";
 
             const contentType = 'application/json';
-            
+
             const metadata = {
                 name: filename,
                 mimeType: contentType
             };
-            
+
             const multipartRequestBody =
                 delimiter +
                 'Content-Type: application/json\r\n\r\n' +
@@ -552,13 +657,13 @@ export async function saveCustomerToGoogleDrive(customer: any): Promise<boolean>
                 'Content-Type: ' + contentType + '\r\n\r\n' +
                 content +
                 closeDelim;
-                
+
             // Using fetch directly for more control over the request
             const token = gapi.client.getToken();
             if (!token) throw new Error('Not authenticated');
-            
+
             const response = await fetch(
-                `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart`,
+                `https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=multipart`,
                 {
                     method: 'PATCH',
                     headers: {
@@ -568,24 +673,25 @@ export async function saveCustomerToGoogleDrive(customer: any): Promise<boolean>
                     body: multipartRequestBody
                 }
             );
-            
+
             if (!response.ok) {
                 throw new Error(`Failed to update file: ${response.status} ${await response.text()}`);
             }
         } else {
+            console.log(`Creating new customer file ${filename} in Google Drive.`);
             // Create new file via multipart upload
             const boundary = '-------314159265358979323846';
             const delimiter = "\r\n--" + boundary + "\r\n";
             const closeDelim = "\r\n--" + boundary + "--";
 
             const contentType = 'application/json';
-            
+
             const metadata = {
                 name: filename,
                 mimeType: contentType,
                 parents: [customersFolder]
             };
-            
+
             const multipartRequestBody =
                 delimiter +
                 'Content-Type: application/json\r\n\r\n' +
@@ -594,11 +700,11 @@ export async function saveCustomerToGoogleDrive(customer: any): Promise<boolean>
                 'Content-Type: ' + contentType + '\r\n\r\n' +
                 content +
                 closeDelim;
-                
+
             // Using fetch directly for more control over the request
             const token = gapi.client.getToken();
             if (!token) throw new Error('Not authenticated');
-            
+
             const response = await fetch(
                 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
                 {
@@ -610,7 +716,7 @@ export async function saveCustomerToGoogleDrive(customer: any): Promise<boolean>
                     body: multipartRequestBody
                 }
             );
-            
+
             if (!response.ok) {
                 throw new Error(`Failed to create file: ${response.status} ${await response.text()}`);
             }
@@ -623,9 +729,6 @@ export async function saveCustomerToGoogleDrive(customer: any): Promise<boolean>
     }
 }
 
-/**
- * Save a product to Google Drive
- */
 export async function saveProductToGoogleDrive(product: any): Promise<boolean> {
     if (!isGoogleDriveSupported() || !await isGoogleDriveAuthenticated()) {
         return false;
@@ -640,23 +743,31 @@ export async function saveProductToGoogleDrive(product: any): Promise<boolean> {
         // Create a filename based on product ID or name
         const filename = `product_${product.id || sanitizeFilename(product.name)}${FILE_EXTENSION}`;
         const content = JSON.stringify(product, null, 2);
+        const localMd5Checksum = md5(content); // Calculate local MD5 checksum
 
-        // Check if file already exists
-        const existingFileId = await findFile(filename, productsFolder);
-        
-        if (existingFileId) {
-            // Update existing file via multipart upload
+        // Check if file already exists and get its checksum
+        const existingFile = await findFile(filename, productsFolder);
+
+        if (existingFile) {
+             // Compare checksums
+             if (existingFile.md5Checksum === localMd5Checksum) {
+                console.log(`Product file ${filename} is already up-to-date in Google Drive.`);
+                return true; // Skip update if content is the same
+            }
+
+            console.log(`Updating existing product file ${filename} in Google Drive.`);
+            // Update existing file via multipart upload (only if checksums differ)
             const boundary = '-------314159265358979323846';
             const delimiter = "\r\n--" + boundary + "\r\n";
             const closeDelim = "\r\n--" + boundary + "--";
 
             const contentType = 'application/json';
-            
+
             const metadata = {
                 name: filename,
                 mimeType: contentType
             };
-            
+
             const multipartRequestBody =
                 delimiter +
                 'Content-Type: application/json\r\n\r\n' +
@@ -665,13 +776,13 @@ export async function saveProductToGoogleDrive(product: any): Promise<boolean> {
                 'Content-Type: ' + contentType + '\r\n\r\n' +
                 content +
                 closeDelim;
-                
+
             // Using fetch directly for more control over the request
             const token = gapi.client.getToken();
             if (!token) throw new Error('Not authenticated');
-            
+
             const response = await fetch(
-                `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart`,
+                `https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=multipart`,
                 {
                     method: 'PATCH',
                     headers: {
@@ -681,24 +792,25 @@ export async function saveProductToGoogleDrive(product: any): Promise<boolean> {
                     body: multipartRequestBody
                 }
             );
-            
+
             if (!response.ok) {
                 throw new Error(`Failed to update file: ${response.status} ${await response.text()}`);
             }
         } else {
+            console.log(`Creating new product file ${filename} in Google Drive.`);
             // Create new file via multipart upload
             const boundary = '-------314159265358979323846';
             const delimiter = "\r\n--" + boundary + "\r\n";
             const closeDelim = "\r\n--" + boundary + "--";
 
             const contentType = 'application/json';
-            
+
             const metadata = {
                 name: filename,
                 mimeType: contentType,
                 parents: [productsFolder]
             };
-            
+
             const multipartRequestBody =
                 delimiter +
                 'Content-Type: application/json\r\n\r\n' +
@@ -707,11 +819,11 @@ export async function saveProductToGoogleDrive(product: any): Promise<boolean> {
                 'Content-Type: ' + contentType + '\r\n\r\n' +
                 content +
                 closeDelim;
-                
+
             // Using fetch directly for more control over the request
             const token = gapi.client.getToken();
             if (!token) throw new Error('Not authenticated');
-            
+
             const response = await fetch(
                 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
                 {
@@ -723,7 +835,7 @@ export async function saveProductToGoogleDrive(product: any): Promise<boolean> {
                     body: multipartRequestBody
                 }
             );
-            
+
             if (!response.ok) {
                 throw new Error(`Failed to create file: ${response.status} ${await response.text()}`);
             }
@@ -736,9 +848,6 @@ export async function saveProductToGoogleDrive(product: any): Promise<boolean> {
     }
 }
 
-/**
- * Save an invoice to Google Drive with year folder organization
- */
 export async function saveInvoiceToGoogleDrive(invoice: Invoice): Promise<boolean> {
     if (!isGoogleDriveSupported() || !await isGoogleDriveAuthenticated()) {
         return false;
@@ -748,7 +857,7 @@ export async function saveInvoiceToGoogleDrive(invoice: Invoice): Promise<boolea
         // Get year from invoice date
         const invoiceDate = new Date(invoice.invoice_date);
         const year = invoiceDate.getFullYear().toString();
-        
+
         // Get or create year directory
         let yearFolderId = folderIds[`${INVOICES_DIRECTORY}/${year}`];
         if (!yearFolderId) {
@@ -763,23 +872,30 @@ export async function saveInvoiceToGoogleDrive(invoice: Invoice): Promise<boolea
         // Create a filename based on invoice number
         const filename = `invoice_${invoice.invoice_number}${FILE_EXTENSION}`;
         const content = JSON.stringify(invoice, null, 2);
+        const localMd5Checksum = md5(content); // Calculate local MD5 checksum
 
-        // Check if file already exists
-        const existingFileId = await findFile(filename, yearFolderId);
-        
-        if (existingFileId) {
-            // Update existing file via multipart upload
+        // Check if file already exists and get its checksum
+        const existingFile = await findFile(filename, yearFolderId);
+
+        if (existingFile) {
+            // Compare checksums
+            if (existingFile.md5Checksum === localMd5Checksum) {
+                console.log(`Invoice file ${filename} is already up-to-date in Google Drive.`);
+                return true; // Skip update if content is the same
+            }
+            console.log(`Updating existing invoice file ${filename} in Google Drive.`);
+            // Update existing file via multipart upload (only if checksums differ)
             const boundary = '-------314159265358979323846';
             const delimiter = "\r\n--" + boundary + "\r\n";
             const closeDelim = "\r\n--" + boundary + "--";
 
             const contentType = 'application/json';
-            
+
             const metadata = {
                 name: filename,
                 mimeType: contentType
             };
-            
+
             const multipartRequestBody =
                 delimiter +
                 'Content-Type: application/json\r\n\r\n' +
@@ -788,13 +904,13 @@ export async function saveInvoiceToGoogleDrive(invoice: Invoice): Promise<boolea
                 'Content-Type: ' + contentType + '\r\n\r\n' +
                 content +
                 closeDelim;
-                
+
             // Using fetch directly for more control over the request
             const token = gapi.client.getToken();
             if (!token) throw new Error('Not authenticated');
-            
+
             const response = await fetch(
-                `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart`,
+                `https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=multipart`,
                 {
                     method: 'PATCH',
                     headers: {
@@ -804,24 +920,25 @@ export async function saveInvoiceToGoogleDrive(invoice: Invoice): Promise<boolea
                     body: multipartRequestBody
                 }
             );
-            
+
             if (!response.ok) {
                 throw new Error(`Failed to update file: ${response.status} ${await response.text()}`);
             }
         } else {
+            console.log(`Creating new invoice file ${filename} in Google Drive.`);
             // Create new file via multipart upload
             const boundary = '-------314159265358979323846';
             const delimiter = "\r\n--" + boundary + "\r\n";
             const closeDelim = "\r\n--" + boundary + "--";
 
             const contentType = 'application/json';
-            
+
             const metadata = {
                 name: filename,
                 mimeType: contentType,
                 parents: [yearFolderId]
             };
-            
+
             const multipartRequestBody =
                 delimiter +
                 'Content-Type: application/json\r\n\r\n' +
@@ -830,11 +947,11 @@ export async function saveInvoiceToGoogleDrive(invoice: Invoice): Promise<boolea
                 'Content-Type: ' + contentType + '\r\n\r\n' +
                 content +
                 closeDelim;
-                
+
             // Using fetch directly for more control over the request
             const token = gapi.client.getToken();
             if (!token) throw new Error('Not authenticated');
-            
+
             const response = await fetch(
                 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
                 {
@@ -846,7 +963,7 @@ export async function saveInvoiceToGoogleDrive(invoice: Invoice): Promise<boolea
                     body: multipartRequestBody
                 }
             );
-            
+
             if (!response.ok) {
                 throw new Error(`Failed to create file: ${response.status} ${await response.text()}`);
             }
@@ -1174,103 +1291,5 @@ export async function deleteProductFromGoogleDrive(productId: string): Promise<b
     } catch (error) {
         console.error('Error deleting product from Google Drive:', error);
         return false;
-    }
-}
-
-/**
- * Find a file by name in a specific folder
- */
-async function findFile(fileName: string, folderId: string): Promise<string | null> {
-    try {
-        const response = await gapi.client.drive.files.list({
-            q: `name='${fileName}' and '${folderId}' in parents and trashed=false`,
-            fields: 'files(id, name)',
-            spaces: 'drive'
-        });
-
-        const files = response.result.files;
-        if (files && files.length > 0) {
-            return files[0].id;
-        }
-        return null;
-    } catch (error) {
-        console.error(`Error finding file ${fileName}:`, error);
-        return null;
-    }
-}
-
-/**
- * Helper function to sanitize filenames
- */
-function sanitizeFilename(name: string): string {
-    // Replace special characters with underscore
-    return name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-}
-
-/**
- * Sync all existing local files to Google Drive
- * This will scan all local files and upload them to Google Drive if they don't exist there already
- */
-export async function syncAllFilesToGoogleDrive(): Promise<{
-    invoices: number;
-    customers: number;
-    products: number;
-    success: boolean;
-}> {
-    if (!isGoogleDriveSupported() || !await isGoogleDriveAuthenticated()) {
-        return { invoices: 0, customers: 0, products: 0, success: false };
-    }
-
-    try {
-        // Make sure directory structure is initialized
-        await initializeDirectoryStructure();
-
-        // Results counters
-        let invoicesCount = 0;
-        let customersCount = 0;
-        let productsCount = 0;
-
-        // First sync customers
-        try {
-            const customers = await loadCustomersFromFiles();
-            for (const customer of customers) {
-                const result = await saveCustomerToGoogleDrive(customer);
-                if (result) customersCount++;
-            }
-        } catch (error) {
-            console.error('Error syncing customers to Google Drive:', error);
-        }
-
-        // Then sync products
-        try {
-            const products = await loadProductsFromFiles();
-            for (const product of products) {
-                const result = await saveProductToGoogleDrive(product);
-                if (result) productsCount++;
-            }
-        } catch (error) {
-            console.error('Error syncing products to Google Drive:', error);
-        }
-
-        // Finally sync invoices
-        try {
-            const invoices = await loadInvoicesFromFiles();
-            for (const invoice of invoices) {
-                const result = await saveInvoiceToGoogleDrive(invoice);
-                if (result) invoicesCount++;
-            }
-        } catch (error) {
-            console.error('Error syncing invoices to Google Drive:', error);
-        }
-
-        return {
-            invoices: invoicesCount,
-            customers: customersCount,
-            products: productsCount,
-            success: true
-        };
-    } catch (error) {
-        console.error('Error syncing files to Google Drive:', error);
-        return { invoices: 0, customers: 0, products: 0, success: false };
     }
 } 
