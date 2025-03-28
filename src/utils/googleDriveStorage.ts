@@ -38,7 +38,7 @@ export function isGoogleDriveSupported(): boolean {
 }
 
 /**
- * Check if we're authenticated with Google Drive
+ * Check if we're authenticated with Google Drive and if the token is valid
  */
 export async function isGoogleDriveAuthenticated(): Promise<boolean> {
     if (!isGoogleDriveSupported()) {
@@ -46,19 +46,32 @@ export async function isGoogleDriveAuthenticated(): Promise<boolean> {
     }
     
     if (!gapiInited || !gisInited) {
-        console.warn('Google API not fully initialized yet');
-        return false;
+        console.warn('Google API not fully initialized yet for authentication check');
+        // Attempt to retrieve and check token even if full init sequence isn't confirmed
+        // This might happen on refresh scenarios
+        const token = gapi?.client?.getToken();
+        if (token) {
+             console.log('Attempting token validation despite potentially incomplete initialization...');
+             return await verifyAndRefreshToken(token);
+        } else {
+             return false;
+        }
     }
     
     if (!gapi || !gapi.client) {
-        console.error('gapi or gapi.client is undefined');
+        console.error('gapi or gapi.client is undefined during authentication check');
         return false;
     }
     
     try {
-        return gapi.client.getToken() !== null;
+        const token = gapi.client.getToken();
+        if (token === null) {
+             return false; // No token exists
+        }
+        // Verify the existing token
+        return await verifyAndRefreshToken(token);
     } catch (error) {
-        console.error('Error checking Google Drive authentication:', error);
+        console.error('Error checking/verifying Google Drive authentication:', error);
         return false;
     }
 }
@@ -545,8 +558,11 @@ function sanitizeFilename(name: string): string {
 /**
  * Sync all existing local files to Google Drive
  * This will scan all local files and upload them to Google Drive if they don't exist there already
+ * @param onProgress Optional callback function to report progress: (progress: { current: number, total: number }) => void
  */
-export async function syncAllFilesToGoogleDrive(): Promise<{
+export async function syncAllFilesToGoogleDrive(
+    onProgress?: (progress: { current: number, total: number }) => void
+): Promise<{
     invoices: number;
     customers: number;
     products: number;
@@ -560,49 +576,92 @@ export async function syncAllFilesToGoogleDrive(): Promise<{
         // Make sure directory structure is initialized
         await initializeDirectoryStructure();
 
+        // Load all local items first to get the total count
+        let allCustomers: any[] = [];
+        let allProducts: any[] = [];
+        let allInvoices: Invoice[] = [];
+
+        try {
+            allCustomers = await loadCustomersFromFiles();
+        } catch (e) { console.warn('Could not load local customers for sync count', e); }
+        try {
+            allProducts = await loadProductsFromFiles();
+        } catch (e) { console.warn('Could not load local products for sync count', e); }
+        try {
+            allInvoices = await loadInvoicesFromFiles();
+        } catch (e) { console.warn('Could not load local invoices for sync count', e); }
+
+        const totalFiles = allCustomers.length + allProducts.length + allInvoices.length;
+        let processedFiles = 0;
+
+        // Helper to call onProgress safely
+        const reportProgress = () => {
+            if (onProgress) {
+                onProgress({ current: processedFiles, total: totalFiles });
+            }
+        };
+        
+        // Initial progress report
+        reportProgress();
+
         // Results counters
         let invoicesCount = 0;
         let customersCount = 0;
         let productsCount = 0;
 
-        // First sync customers
+        // First sync customers (using the preloaded list)
         try {
-            const customers = await loadCustomersFromFiles();
-            for (const customer of customers) {
+            // const customers = await loadCustomersFromFiles(); // Use preloaded list
+            for (const customer of allCustomers) {
                 const result = await saveCustomerToGoogleDrive(customer);
                 if (result) customersCount++;
+                processedFiles++;
+                reportProgress();
             }
         } catch (error) {
             console.error('Error syncing customers to Google Drive:', error);
+            // Even on error, update progress for the items attempted
+            processedFiles += allCustomers.length - customersCount; // Estimate remaining items in this batch failed
+            reportProgress();
         }
 
-        // Then sync products
+        // Then sync products (using the preloaded list)
         try {
-            const products = await loadProductsFromFiles();
-            for (const product of products) {
+            // const products = await loadProductsFromFiles(); // Use preloaded list
+            for (const product of allProducts) {
                 const result = await saveProductToGoogleDrive(product);
                 if (result) productsCount++;
+                processedFiles++;
+                reportProgress();
             }
         } catch (error) {
             console.error('Error syncing products to Google Drive:', error);
+             // Even on error, update progress for the items attempted
+            processedFiles += allProducts.length - productsCount; // Estimate remaining items in this batch failed
+            reportProgress();
         }
 
-        // Finally sync invoices
+        // Finally sync invoices (using the preloaded list)
         try {
-            const invoices = await loadInvoicesFromFiles();
-            for (const invoice of invoices) {
+            // const invoices = await loadInvoicesFromFiles(); // Use preloaded list
+            for (const invoice of allInvoices) {
                 const result = await saveInvoiceToGoogleDrive(invoice);
                 if (result) invoicesCount++;
+                processedFiles++;
+                reportProgress();
             }
         } catch (error) {
             console.error('Error syncing invoices to Google Drive:', error);
+             // Even on error, update progress for the items attempted
+            processedFiles += allInvoices.length - invoicesCount; // Estimate remaining items in this batch failed
+            reportProgress();
         }
 
         return {
             invoices: invoicesCount,
             customers: customersCount,
             products: productsCount,
-            success: true
+            success: true // Consider returning partial success or specific errors if needed
         };
     } catch (error) {
         console.error('Error syncing files to Google Drive:', error);

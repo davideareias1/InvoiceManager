@@ -38,6 +38,8 @@ interface GoogleDriveContextType {
         products: number;
         success: boolean;
     }>;
+    connectionStatusMessage: string;
+    syncProgress: { current: number, total: number } | null;
 }
 
 const GoogleDriveContext = createContext<GoogleDriveContextType | undefined>(undefined);
@@ -62,6 +64,8 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
     const [isBackupEnabled, setIsBackupEnabled] = useState(false);
     const [gApiLoaded, setGApiLoaded] = useState(false);
     const [gisLoaded, setGisLoaded] = useState(false);
+    const [connectionStatusMessage, setConnectionStatusMessage] = useState('Initializing...');
+    const [syncProgress, setSyncProgress] = useState<{ current: number, total: number } | null>(null);
 
     // Always call the hook unconditionally
     const fileSystemChildContext = useFileSystemChild();
@@ -73,52 +77,67 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
             // Check if Google Drive API is supported
             const supported = isGoogleDriveSupported();
             setIsSupported(supported);
+            setConnectionStatusMessage('Checking browser support...');
 
             if (!supported) {
                 console.error('Google Drive API is not supported or API credentials are missing');
+                setConnectionStatusMessage('Google Drive not supported by browser or credentials missing.');
                 setIsInitialized(true);
                 return;
             }
 
             if (supported) {
                 try {
+                    setConnectionStatusMessage('Loading Google API scripts...');
                     console.log('Initializing Google Drive API...');
                     // Load the Google API scripts
                     await loadGoogleApiScript().catch(err => {
                         console.error('Error loading Google API script:', err);
+                        setConnectionStatusMessage('Failed to load Google API.');
                         throw err;
                     });
                     
                     setGApiLoaded(true);
                     console.log('Google API script loaded successfully');
+                    setConnectionStatusMessage('Loading Google Identity Services...');
                     
                     await loadGoogleIdentityScript().catch(err => {
                         console.error('Error loading Google Identity Services script:', err);
+                        setConnectionStatusMessage('Failed to load Google Identity Services.');
                         throw err;
                     });
                     
                     setGisLoaded(true);
                     console.log('Google Identity Services script loaded successfully');
+                    setConnectionStatusMessage('Initializing Google Drive client...');
 
                     // Initialize the API
                     const initialized = await initializeGoogleDriveApi()
                         .catch(err => {
                             console.error('Error initializing Google Drive API:', err);
+                            setConnectionStatusMessage('Failed to initialize Google Drive client.');
                             return false;
                         });
                     
-                    setIsInitialized(true);
-                    console.log('Google Drive API initialized:', initialized);
+                    console.log('Google Drive API client initialized:', initialized);
+                    
+                    if (!initialized) {
+                        setIsInitialized(true);
+                        return;
+                    }
 
+                    setConnectionStatusMessage('Checking authentication status...');
                     // Check if already authenticated
                     const authenticated = await isGoogleDriveAuthenticated()
                         .catch(err => {
                             console.error('Error checking Google Drive authentication:', err);
+                            setConnectionStatusMessage('Failed to check authentication.');
                             return false;
                         });
                     
                     setIsAuthenticated(authenticated);
                     console.log('Google Drive authenticated:', authenticated);
+                    setConnectionStatusMessage(authenticated ? 'Connected.' : 'Ready to connect.');
 
                     // Check if backup is enabled from localStorage
                     try {
@@ -127,8 +146,14 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
                     } catch (error) {
                         console.error('Error reading backup preference:', error);
                     }
+                    
+                    setIsInitialized(true);
+                    
                 } catch (error) {
-                    console.error('Error initializing Google Drive API:', error);
+                    console.error('Error during Google Drive initialization process:', error);
+                    if (!connectionStatusMessage.startsWith('Failed')) {
+                        setConnectionStatusMessage('An error occurred during initialization.');
+                    }
                     setIsInitialized(true);
                 }
             } else {
@@ -272,39 +297,41 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         }
     }, [isSupported, isAuthenticated, isBackupEnabled]);
 
-    // Sync all files to Google Drive
+    // Sync all local files to Google Drive
     const syncAllFiles = useCallback(async (): Promise<{
         invoices: number;
         customers: number;
         products: number;
         success: boolean;
     }> => {
-        if (!isSupported || !isAuthenticated || !isBackupEnabled) {
-            return {
-                invoices: 0,
-                customers: 0,
-                products: 0,
-                success: false
-            };
+        if (!isSupported || !isAuthenticated) {
+            console.warn('Cannot sync: Drive not supported or not authenticated.');
+            return { invoices: 0, customers: 0, products: 0, success: false };
         }
 
+        setIsLoading(true);
+        setSyncProgress({ current: 0, total: 0 }); // Reset progress at the start
+
+        const handleProgress = (progress: { current: number, total: number }) => {
+            console.log('Sync Progress:', progress); // Optional: for debugging
+            setSyncProgress(progress);
+        };
+
         try {
-            setIsLoading(true);
-            const result = await syncAllFilesToGoogleDrive();
-            setIsLoading(false);
+            console.log('Starting full sync to Google Drive...');
+            const result = await syncAllFilesToGoogleDrive(handleProgress); // Pass callback
+            console.log('Sync complete:', result);
             return result;
         } catch (error) {
             console.error('Error syncing all files to Google Drive:', error);
-            return {
-                invoices: 0,
-                customers: 0,
-                products: 0,
-                success: false
-            };
+            return { invoices: 0, customers: 0, products: 0, success: false };
+        } finally {
+            setIsLoading(false);
+            setSyncProgress(null); // Clear progress when done
         }
-    }, [isSupported, isAuthenticated, isBackupEnabled]);
+    }, [isSupported, isAuthenticated]);
 
-    const value = {
+    const contextValue: GoogleDriveContextType = {
         isSupported,
         isInitialized,
         isLoading,
@@ -317,11 +344,13 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         deleteInvoice,
         saveCustomer,
         saveProduct,
-        syncAllFiles
+        syncAllFiles,
+        connectionStatusMessage,
+        syncProgress
     };
 
     return (
-        <GoogleDriveContext.Provider value={value}>
+        <GoogleDriveContext.Provider value={contextValue}>
             {children}
         </GoogleDriveContext.Provider>
     );

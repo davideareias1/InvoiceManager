@@ -14,6 +14,7 @@ import { ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, BarChart,
 import { Badge } from "@/components/ui/badge";
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import { Progress } from '@/components/ui/progress';
 import { showSuccess, showError } from '../utils/notifications';
 
 export default function HomePage() {
@@ -31,11 +32,13 @@ export default function HomePage() {
         isInitialized: isDriveInitialized,
         isAuthenticated: isDriveAuthenticated,
         isLoading: isDriveLoading,
+        connectionStatusMessage: driveConnectionStatus,
         isBackupEnabled,
         setIsBackupEnabled,
         requestPermission: requestDrivePermission,
         signOut: signOutDrive,
-        syncAllFiles
+        syncAllFiles,
+        syncProgress
     } = useGoogleDrive();
 
     const { companyInfo } = useCompany();
@@ -313,9 +316,9 @@ export default function HomePage() {
                         <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
                             <div className="flex flex-col items-center p-6">
                                 <RefreshCw className="h-8 w-8 text-blue-600 animate-spin mb-2" />
-                                <p className="text-blue-800 font-medium">Initializing Google Drive...</p>
-                                <div className="text-xs text-blue-600 mt-2 max-w-[250px] text-center">
-                                    Loading API, authenticating, and checking permissions
+                                <p className="text-blue-800 font-medium">Connecting to Google Drive...</p>
+                                <div className="text-sm text-blue-700 mt-2 max-w-[250px] text-center">
+                                    {driveConnectionStatus}
                                 </div>
                             </div>
                         </div>
@@ -393,25 +396,35 @@ export default function HomePage() {
                             </Button>
                         </CardFooter>
                     ) : isDriveAuthenticated ? (
-                        <CardFooter className="pt-0 flex flex-wrap gap-2">
-                            <Button
-                                onClick={handleSyncFiles}
-                                variant="secondary"
-                                className="bg-blue-100 hover:bg-blue-200 text-blue-900 relative"
-                                disabled={isSyncing || !isBackupEnabled || isDriveLoading || showConnectionProcess}
-                            >
-                                {isSyncing ? (
-                                    <>
-                                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                                        <span className="animate-pulse">Syncing...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <RefreshCw className="mr-2 h-4 w-4" />
-                                        Sync All Files
-                                    </>
+                        <CardFooter className="pt-0 flex flex-wrap gap-2 items-start">
+                            <div className="flex-grow">
+                                <Button
+                                    onClick={handleSyncFiles}
+                                    variant="secondary"
+                                    className="bg-blue-100 hover:bg-blue-200 text-blue-900 relative w-full"
+                                    disabled={isSyncing || !isBackupEnabled || isDriveLoading || showConnectionProcess}
+                                >
+                                    {isSyncing ? (
+                                        <>
+                                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                            <span className="animate-pulse">Syncing... ({syncProgress ? `${syncProgress.current} / ${syncProgress.total}` : 'Starting...'})</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <RefreshCw className="mr-2 h-4 w-4" />
+                                            Sync All Files
+                                        </>
+                                    )}
+                                </Button>
+                                {isSyncing && syncProgress && (
+                                    <div className="mt-2">
+                                        <Progress 
+                                            value={syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0} 
+                                            className="h-2" 
+                                        />
+                                    </div>
                                 )}
-                            </Button>
+                            </div>
                             <Button
                                 onClick={() => {
                                     setShowConnectionProcess(true);
