@@ -4,23 +4,57 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileText, Settings, BarChart2, CheckCircle, XCircle, ArrowUpRight, HardDrive, Shield, Home, Users, PieChart, Cloud, RefreshCw } from 'lucide-react';
+import {
+    FileText, Settings, BarChart2, CheckCircle, XCircle, ArrowUpRight,
+    HardDrive, Cloud, RefreshCw, AlertTriangle, PieChart, Database, LayoutDashboard, HelpCircle
+} from 'lucide-react';
 import { useFileSystem } from '../contexts/FileSystemContext';
 import { useCompany } from '../contexts/CompanyContext';
 import { useGoogleDrive } from '../contexts/GoogleDriveContext';
 import { Skeleton } from '@/components/ui/skeleton';
-import { format, parseISO, isThisMonth, isAfter, subMonths } from 'date-fns';
-import { ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
+import { format, parseISO, isThisMonth, subMonths } from 'date-fns';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts';
 import { Badge } from "@/components/ui/badge";
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { showSuccess, showError } from '../utils/notifications';
+
+// Helper component for status display
+const StatusIndicator = ({ status, text, icon: Icon }: { status: 'success' | 'warning' | 'error' | 'info' | 'loading', text: string, icon?: React.ElementType }) => {
+    const baseClasses = "text-xs font-medium px-2.5 py-0.5 rounded-full inline-flex items-center gap-1";
+    const statusClasses = {
+        success: "bg-green-100 text-green-800",
+        warning: "bg-amber-100 text-amber-800",
+        error: "bg-red-100 text-red-800",
+        info: "bg-blue-100 text-blue-800",
+        loading: "bg-gray-100 text-gray-800 animate-pulse"
+    };
+    const DefaultIcon = status === 'success' ? CheckCircle : status === 'warning' ? AlertTriangle : status === 'error' ? XCircle : RefreshCw;
+    const FinalIcon = Icon || DefaultIcon;
+
+    return (
+        <span className={`${baseClasses} ${statusClasses[status]}`}>
+            <FinalIcon className={`h-3 w-3 ${status === 'loading' ? 'animate-spin' : ''}`} />
+            {text}
+        </span>
+    );
+};
+
+// Helper component for loading sections
+const SectionSkeleton = ({ count = 3 }: { count?: number }) => (
+    <div className="space-y-3">
+        {[...Array(count)].map((_, i) => (
+            <Skeleton key={i} className={`h-4 w-${i === 0 ? 'full' : i === 1 ? '5/6' : '4/6'}`} />
+        ))}
+    </div>
+);
 
 export default function HomePage() {
     const {
         isSupported,
-        isInitialized,
+        isInitialized: isFileSystemInitialized,
         hasPermission,
         requestPermission,
         invoices,
@@ -43,60 +77,38 @@ export default function HomePage() {
 
     const { companyInfo } = useCompany();
 
-    // More specific loading states
-    const [isLoading, setIsLoading] = useState(true);
-    const [showConnectionProcess, setShowConnectionProcess] = useState(true); // Start as true to show loading initially
-    const [fileSystemProcessing, setFileSystemProcessing] = useState(true); // Track file system permission process
+    const [isFileSystemLoading, setIsFileSystemLoading] = useState(true);
+    const [isFileSystemRequesting, setIsFileSystemRequesting] = useState(false);
+    const [isDriveConnecting, setIsDriveConnecting] = useState(true); // Controls the initial Drive connection state visual
 
-    // Reference to track if initial load is done
-    const initialLoadDone = useRef(false);
+    // Determine overall loading state
+    const isPageLoading = isFileSystemLoading || isDriveConnecting;
 
-    // Track initialization steps
-    const driveInitSteps = useRef({
-        apiInitialized: false,
-        authChecked: false,
-        loaded: false
-    });
-
-    // Load invoices once when component mounts
+    // Load invoices once file system is ready
     useEffect(() => {
-        // Check if initialization is complete, then set loading to false
-        if (isInitialized) {
+        if (isFileSystemInitialized) {
             if (hasPermission) {
-                loadInvoices()
-                    .finally(() => {
-                        setIsLoading(false);
-                        setFileSystemProcessing(false);
-                    });
+                loadInvoices().finally(() => setIsFileSystemLoading(false));
             } else {
-                setIsLoading(false);
-                setFileSystemProcessing(false);
+                setIsFileSystemLoading(false); // Not loading invoices, just ready
             }
         }
-    }, [isInitialized, hasPermission, loadInvoices]);
+    }, [isFileSystemInitialized, hasPermission, loadInvoices]);
 
-    // Handle connection process visibility - wait for all critical steps to complete
+    // Manage Google Drive connection state visual
     useEffect(() => {
-        // Only hide the loading indicator when all critical conditions are met
-        if (
-            isDriveInitialized && 
-            (isDriveAuthenticated !== undefined) && 
-            !isDriveLoading
-        ) {
-            // Always add a slight delay before hiding for smooth transition
-            const timer = setTimeout(() => {
-                setShowConnectionProcess(false);
-                driveInitSteps.current.loaded = true;
-            }, 500);
+        // Keep showing connecting state until drive is initialized AND auth state is known
+        if (isDriveInitialized && isDriveAuthenticated !== undefined && !isDriveLoading) {
+            const timer = setTimeout(() => setIsDriveConnecting(false), 300); // Short delay for smoother transition
             return () => clearTimeout(timer);
-        } else {
-            setShowConnectionProcess(true);
+        } else if (!isDriveLoading) { // If not loading but still not initialized/authenticated, show connecting
+             setIsDriveConnecting(true);
         }
     }, [isDriveInitialized, isDriveAuthenticated, isDriveLoading]);
 
     // Calculate analytics data
     const analytics = useMemo(() => {
-        if (!invoices || invoices.length === 0) {
+        if (isFileSystemLoading || !invoices || invoices.length === 0) {
             return {
                 totalInvoices: 0,
                 totalRevenue: 0,
@@ -104,53 +116,41 @@ export default function HomePage() {
                 thisMonthRevenue: 0,
                 paidInvoices: 0,
                 unpaidInvoices: 0,
-                last3Months: [],
-                statusData: []
+                last3Months: Array(3).fill({ name: '...', revenue: 0 }),
+                statusData: [],
+                hasData: false
             };
         }
 
-        // Basic counts
         const paidInvoices = invoices.filter(inv => inv.is_paid).length;
         const unpaidInvoices = invoices.length - paidInvoices;
         const totalRevenue = invoices.reduce((sum, inv) => sum + inv.total, 0);
-
-        // This month
         const thisMonthInvoices = invoices.filter(inv => isThisMonth(parseISO(inv.invoice_date))).length;
         const thisMonthRevenue = invoices
             .filter(inv => isThisMonth(parseISO(inv.invoice_date)))
             .reduce((sum, inv) => sum + inv.total, 0);
 
-        // Status data for pie chart
         const statusData = [
             { name: 'Paid', value: paidInvoices },
             { name: 'Unpaid', value: unpaidInvoices }
         ].filter(item => item.value > 0);
 
-        // Last 3 months revenue data for bar chart
         const now = new Date();
-        const monthNames = [];
-        const monthlyRevenue = [];
-
-        for (let i = 2; i >= 0; i--) {
-            const monthDate = subMonths(now, i);
+        const monthlyRevenue = Array.from({ length: 3 }).map((_, i) => {
+            const monthDate = subMonths(now, 2 - i); // Iterate 0, 1, 2 months ago
             const monthName = format(monthDate, 'MMM');
-            monthNames.push(monthName);
-
             const startOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
             const endOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
 
-            const monthRevenue = invoices
+            const revenue = invoices
                 .filter(inv => {
                     const invoiceDate = parseISO(inv.invoice_date);
                     return invoiceDate >= startOfMonth && invoiceDate <= endOfMonth;
                 })
                 .reduce((sum, inv) => sum + inv.total, 0);
 
-            monthlyRevenue.push({
-                name: monthName,
-                revenue: monthRevenue
-            });
-        }
+            return { name: monthName, revenue: revenue };
+        });
 
         return {
             totalInvoices: invoices.length,
@@ -160,16 +160,15 @@ export default function HomePage() {
             paidInvoices,
             unpaidInvoices,
             last3Months: monthlyRevenue,
-            statusData
+            statusData,
+            hasData: invoices.length > 0
         };
-    }, [invoices]);
+    }, [invoices, isFileSystemLoading]);
 
-    // Format currency
     const formatCurrency = (value: number): string => {
         return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
     };
 
-    // Sync Results State (no longer need isSyncing)
     const [syncResults, setSyncResults] = useState<{
         invoices: number;
         customers: number;
@@ -178,476 +177,432 @@ export default function HomePage() {
     } | null>(null);
 
     const handleSyncFiles = async () => {
-        if (!isDriveAuthenticated || !isBackupEnabled || syncProgress != null) return; // Added check for syncProgress
-
-        setSyncResults(null); // Clear previous results
+        if (!isDriveAuthenticated || !isBackupEnabled || syncProgress != null) return;
+        setSyncResults(null);
         try {
             const results = await syncAllFiles();
             setSyncResults(results);
-
             if (results.success) {
-                showSuccess(`Synced ${results.invoices} invoices, ${results.customers} customers, and ${results.products} products to Google Drive.`);
+                showSuccess(`Synced ${results.invoices} invoices, ${results.customers} customers, and ${results.products} products.`);
             } else {
-                showError('Error syncing files to Google Drive.');
+                showError('Error syncing files.');
             }
         } catch (error) {
             console.error('Error syncing files:', error);
-            showError('Error syncing files to Google Drive.');
+            showError('Error syncing files.');
         } finally {
-            // Auto-clear results message after 10 seconds
             setTimeout(() => setSyncResults(null), 10000);
         }
     };
 
-    // Toggle Google Drive backup
     const handleToggleBackup = async (enabled: boolean) => {
         if (enabled && !isDriveAuthenticated) {
-            // Need to request permission first
-            setShowConnectionProcess(true);
+            setIsDriveConnecting(true); // Show connection visual
             const granted = await requestDrivePermission();
-            
-            // Only hide after a delay to ensure everything is loaded
-            setTimeout(() => {
-                if (isDriveInitialized && (isDriveAuthenticated !== undefined)) {
-                    setShowConnectionProcess(false);
-                }
-            }, 1000);
-            
+             // Keep connection visual until state updates (handled by useEffect)
             if (!granted) {
                 showError('Failed to authorize Google Drive access');
-                return;
+                setIsDriveConnecting(false); // Hide connection visual on failure
+                return; // Don't enable backup if permission failed
             }
-            showSuccess('Google Drive backup enabled');
+             // On success, useEffect will handle hiding the connection visual
+             // We might need setIsBackupEnabled(true) here if it doesn't get set automatically
+             // But let's rely on the context update first. We should call setIsBackupEnabled(true) though
+             // otherwise the switch state won't update until context is fully processed.
+             setIsBackupEnabled(true);
+             showSuccess('Google Drive connected.');
+
+
+        } else {
+             setIsBackupEnabled(enabled); // Directly toggle if already authenticated or disabling
+             if (!enabled && isDriveAuthenticated) {
+                 // Optionally sign out if disabling backup while authenticated
+                 // signOutDrive(); // Consider if this is desired UX
+                 showSuccess('Google Drive backup disabled.');
+             }
         }
-        setIsBackupEnabled(enabled);
+
     };
 
+     const handleRequestFileSystemPermission = async () => {
+        setIsFileSystemRequesting(true);
+        try {
+            await requestPermission();
+            // State updates (hasPermission, invoices) will trigger re-renders via context/useEffect
+        } catch (err) {
+            console.error("Error requesting permission:", err);
+            showError("Failed to get file system permission.");
+        } finally {
+            // Add a small delay to prevent flicker if permission is granted instantly
+            setTimeout(() => setIsFileSystemRequesting(false), 300);
+        }
+    };
+
+    const handleSignOutDrive = async () => {
+        setIsDriveConnecting(true); // Show visual feedback during sign out
+        try {
+            await signOutDrive();
+            showSuccess('Disconnected from Google Drive.');
+        } catch (error) {
+            console.error('Error signing out of Google Drive:', error);
+            showError('Failed to disconnect from Google Drive.');
+        } finally {
+             // Let useEffect handle hiding the connecting state based on auth status
+        }
+    };
+
+
     // Colors for charts
-    const COLORS = ['#16a34a', '#f43f5e', '#3b82f6', '#f97316'];
+    const BAR_CHART_COLOR = "#3b82f6"; // Example primary color
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
+        <div className="space-y-8 p-4 md:p-6 lg:p-8 bg-gray-50/50 min-h-screen">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-8">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome to Invoice Manager</h1>
-                    <p className="text-muted-foreground">Modern invoice management for German businesses</p>
+                    <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-gray-900">Dashboard</h1>
+                    <p className="text-sm md:text-base text-gray-600">Welcome back! Here's your business overview.</p>
                 </div>
-                <Button asChild>
-                    <Link href="/invoices">
-                        <FileText className="mr-2 h-4 w-4" />
-                        Manage Invoices
-                    </Link>
-                </Button>
+                <div className="flex gap-2">
+                    <Button variant="outline" size="sm" asChild>
+                        <Link href="/settings">
+                            <Settings className="mr-2 h-4 w-4" /> Settings
+                        </Link>
+                    </Button>
+                     <Button size="sm" asChild>
+                        <Link href="/create-invoice">
+                            <FileText className="mr-2 h-4 w-4" /> Create Invoice
+                        </Link>
+                    </Button>
+                </div>
             </div>
 
-            {/* Storage Cards - show options for local storage and Google Drive backup */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Local Storage Card */}
-                <Card className={`${!isSupported ? 'border-red-300 bg-red-50' : (!hasPermission ? 'border-amber-300 bg-amber-50' : '')} relative overflow-hidden`}>
-                    {/* Loading overlay for file system permission process */}
-                    {fileSystemProcessing && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-                            <div className="flex flex-col items-center p-6">
-                                <RefreshCw className="h-8 w-8 text-amber-600 animate-spin mb-2" />
-                                <p className="text-amber-800 font-medium">Checking storage permissions...</p>
-                            </div>
-                        </div>
-                    )}
-                    
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base flex gap-2 items-center">
-                            <HardDrive className="h-5 w-5 text-slate-600" />
-                            {!isSupported ? 'Browser Compatibility Issue' : 'Local Storage Access'}
-                        </CardTitle>
-                        <CardDescription>
-                            {!isSupported
-                                ? "Your browser doesn't support the File System API"
-                                : "Store invoices securely on your device"}
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="pb-3">
-                        <p className="text-sm mb-3">
-                            {!isSupported
-                                ? "For the best experience, we recommend using Chrome or Microsoft Edge."
-                                : hasPermission
-                                    ? "You have granted access to store files in your selected folder."
-                                    : "To manage your invoices, this app needs permission to access file storage."}
-                        </p>
-                        {isSupported && (
-                            <div className="flex items-center space-x-2">
-                                <Badge variant={hasPermission ? "outline" : "outline"} className={`font-normal ${hasPermission ? "bg-green-100 text-green-800" : ""}`}>
-                                    {hasPermission ? 'Access Granted' : 'Access Required'}
-                                </Badge>
-                            </div>
-                        )}
-                    </CardContent>
-                    {!isSupported ? null : !hasPermission ? (
-                        <CardFooter className="pt-0">
-                            <Button
-                                onClick={() => {
-                                    setFileSystemProcessing(true);
-                                    requestPermission().finally(() => {
-                                        setTimeout(() => setFileSystemProcessing(false), 500);
-                                    });
-                                }}
-                                variant="secondary"
-                                className="bg-amber-100 hover:bg-amber-200 text-amber-900"
-                                disabled={fileSystemProcessing}
-                            >
-                                {fileSystemProcessing ? (
-                                    <>
-                                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                                        Processing...
-                                    </>
-                                ) : (
-                                    "Grant Access"
-                                )}
-                            </Button>
-                        </CardFooter>
-                    ) : null}
-                </Card>
-
-                {/* Google Drive Backup Card */}
-                <Card className={`${!isDriveSupported ? 'border-red-300 bg-red-50' : (!isDriveAuthenticated && isBackupEnabled ? 'border-amber-300 bg-amber-50' : '')} relative overflow-hidden`}>
-                    {/* Loading overlay for connection process */}
-                    {showConnectionProcess && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-                            <div className="flex flex-col items-center p-6">
-                                <RefreshCw className="h-8 w-8 text-blue-600 animate-spin mb-2" />
-                                <p className="text-blue-800 font-medium">Connecting to Google Drive...</p>
-                                <div className="text-sm text-blue-700 mt-2 max-w-[250px] text-center">
-                                    {driveConnectionStatus}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base flex gap-2 items-center">
-                            <Cloud className="h-5 w-5 text-blue-600" />
-                            {!isDriveSupported ? 'Google Drive Not Available' : 'Google Drive Backup'}
-                        </CardTitle>
-                        <CardDescription>
-                            {!isDriveSupported
-                                ? "Your browser can't connect to Google Drive"
-                                : "Automatically back up all your data to Google Drive"}
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="pb-3">
-                        <p className="text-sm mb-3">
-                            {!isDriveSupported
-                                ? "Make sure you're online and your browser supports the required APIs."
-                                : isDriveAuthenticated
-                                    ? "Your data will be automatically backed up to Google Drive when changes are made."
-                                    : "Enable Google Drive backup to keep your data safe in the cloud."}
-                        </p>
-                        {isDriveSupported && (
-                            <div className="flex flex-col space-y-3">
-                                <div className="flex items-center space-x-2">
-                                    <Badge variant="outline" className={`font-normal ${isDriveAuthenticated ? "bg-green-100 text-green-800" : ""}`}>
-                                        {isDriveAuthenticated ? 'Connected' : 'Not Connected'}
-                                    </Badge>
-                                    
-                                    <div className="flex items-center space-x-2">
-                                        <span className="text-sm">Backup Enabled:</span>
-                                        <Switch
-                                            checked={isBackupEnabled}
-                                            onCheckedChange={handleToggleBackup}
-                                            disabled={!isDriveInitialized || isDriveLoading || showConnectionProcess}
-                                        />
-                                    </div>
-                                </div>
-                                
-                                {/* Sync Results Display */}
-                                {syncResults && (
-                                    <div className={`p-2 rounded-md text-sm ${syncResults.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                        {syncResults.success
-                                            ? `Sync successful: ${syncResults.invoices} invoices, ${syncResults.customers} customers, ${syncResults.products} products.`
-                                            : 'Sync failed. Check console for details.'}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </CardContent>
-                    {!isDriveSupported ? null : !isDriveAuthenticated && isBackupEnabled ? (
-                        <CardFooter className="pt-0">
-                            <Button
-                                onClick={() => {
-                                    setShowConnectionProcess(true);
-                                    requestDrivePermission();
-                                }}
-                                variant="secondary"
-                                className="bg-blue-100 hover:bg-blue-200 text-blue-900"
-                                disabled={isDriveLoading || showConnectionProcess}
-                            >
-                                {isDriveLoading || showConnectionProcess ? (
-                                    <>
-                                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                                        Connecting...
-                                    </>
-                                ) : (
-                                    <>Connect Google Drive</>
-                                )}
-                            </Button>
-                        </CardFooter>
-                    ) : isDriveAuthenticated ? (
-                        <CardFooter className="pt-0 flex flex-wrap gap-2 items-start">
-                            <div className="flex-grow">
-                                <Button
-                                    onClick={handleSyncFiles}
-                                    variant="secondary"
-                                    className="bg-blue-100 hover:bg-blue-200 text-blue-900 relative w-full"
-                                    disabled={syncProgress != null || !isDriveAuthenticated || !isBackupEnabled || showConnectionProcess}
-                                >
-                                    {syncProgress != null ? (
-                                        <>
-                                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                                            <span className="animate-pulse">Syncing... ({syncProgress ? `${syncProgress.current} / ${syncProgress.total}` : 'Starting...'})</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <RefreshCw className="mr-2 h-4 w-4" />
-                                            Sync All Files
-                                        </>
-                                    )}
-                                </Button>
-                                {syncProgress != null && (
-                                    <div className="mt-2">
-                                        <Progress 
-                                            value={syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0} 
-                                            className="h-2" 
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                            <Button
-                                onClick={() => {
-                                    setShowConnectionProcess(true);
-                                    signOutDrive().finally(() => {
-                                        setTimeout(() => setShowConnectionProcess(false), 500);
-                                    });
-                                }}
-                                variant="outline"
-                                size="sm"
-                                disabled={showConnectionProcess || !isDriveAuthenticated}
-                                className="border-destructive text-destructive hover:bg-destructive/10"
-                            >
-                                <XCircle className="mr-2 h-4 w-4" />
-                                Disconnect
-                            </Button>
-                        </CardFooter>
-                    ) : null}
-                </Card>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="group hover:border-primary/50 transition-colors cursor-pointer">
-                    <Link href="/create-invoice" className="block p-6">
-                        <div className="flex flex-col items-center text-center">
-                            <div className="p-3 rounded-full bg-primary/10 text-primary mb-3">
-                                <FileText className="h-6 w-6" />
-                            </div>
-                            <h3 className="font-medium mb-1 group-hover:text-primary transition-colors">Create Invoice</h3>
-                            <p className="text-sm text-muted-foreground">Generate professional invoices or credit notes</p>
-                        </div>
-                    </Link>
-                </Card>
-
-                <Card className="group hover:border-primary/50 transition-colors cursor-pointer">
-                    <Link href="/company" className="block p-6">
-                        <div className="flex flex-col items-center text-center">
-                            <div className="p-3 rounded-full bg-indigo-100 text-indigo-600 mb-3">
-                                <Settings className="h-6 w-6" />
-                            </div>
-                            <h3 className="font-medium mb-1 group-hover:text-primary transition-colors">Company Settings</h3>
-                            <p className="text-sm text-muted-foreground">Manage your business details and preferences</p>
-                        </div>
-                    </Link>
-                </Card>
-
-                <Card className="group hover:border-primary/50 transition-colors cursor-pointer">
-                    <Link href="/analytics" className="block p-6">
-                        <div className="flex flex-col items-center text-center">
-                            <div className="p-3 rounded-full bg-emerald-100 text-emerald-600 mb-3">
-                                <BarChart2 className="h-6 w-6" />
-                            </div>
-                            <h3 className="font-medium mb-1 group-hover:text-primary transition-colors">Analytics</h3>
-                            <p className="text-sm text-muted-foreground">View financial insights and reports</p>
-                        </div>
-                    </Link>
-                </Card>
-            </div>
-
-            {/* System Status */}
-            <Card>
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                        <HardDrive className="h-5 w-5 text-gray-500" />
-                        System Status
+            {/* System Status & Setup */}
+             <Card className="bg-white shadow-sm border border-gray-200">
+                <CardHeader>
+                    <CardTitle className="text-lg font-semibold flex items-center gap-2 text-gray-800">
+                        <LayoutDashboard className="h-5 w-5 text-primary" />
+                        System Setup & Status
                     </CardTitle>
+                    <CardDescription>Check essential configurations and connections.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    {isLoading ? (
-                        <div className="space-y-2">
-                            <Skeleton className="h-4 w-full" />
-                            <Skeleton className="h-4 w-3/4" />
-                            <Skeleton className="h-4 w-1/2" />
+                <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                     {/* Local Storage Section */}
+                     <div className="space-y-3 p-4 border rounded-lg bg-gray-50">
+                         <div className="flex items-center justify-between">
+                            <h3 className="font-medium text-sm flex items-center gap-1.5 text-gray-700">
+                                <HardDrive className="h-4 w-4" /> Local Storage
+                            </h3>
+                            {!isSupported ? (
+                                <StatusIndicator status="error" text="Not Supported" />
+                            ) : isFileSystemLoading || isFileSystemRequesting ? (
+                                <StatusIndicator status="loading" text="Checking..." />
+                            ) : hasPermission ? (
+                                <StatusIndicator status="success" text="Access Granted" />
+                            ) : (
+                                <StatusIndicator status="warning" text="Action Required" />
+                            )}
                         </div>
-                    ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div className="space-y-1 rounded-lg border p-3">
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="text-muted-foreground">File System API</span>
-                                    <Badge variant={isSupported ? "outline" : "destructive"} className={`font-normal ${isSupported ? "bg-green-100 text-green-800 hover:bg-green-100 hover:text-green-800" : ""}`}>
-                                        {isSupported ? 'Supported' : 'Not Supported'}
-                                    </Badge>
-                                </div>
-                            </div>
+                         <p className="text-xs text-gray-600">
+                            {!isSupported
+                                ? "Your browser doesn't support the required File System API. Try Chrome or Edge."
+                                : hasPermission
+                                ? "Ready to manage invoices locally."
+                                : "Permission needed to store and access invoice files on your device."}
+                        </p>
+                         {!isSupported ? null : !hasPermission && !isFileSystemRequesting && !isFileSystemLoading && (
+                            <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={handleRequestFileSystemPermission}
+                                className="w-full"
+                                disabled={isFileSystemRequesting}
+                            >
+                                Grant Access
+                            </Button>
+                        )}
+                        {isFileSystemRequesting && (
+                            <Button size="sm" variant="secondary" className="w-full" disabled>
+                                <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Processing...
+                            </Button>
+                        )}
+                     </div>
 
-                            <div className="space-y-1 rounded-lg border p-3">
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="text-muted-foreground">Storage Access</span>
-                                    <Badge variant="outline" className={`font-normal ${hasPermission ? "bg-green-100 text-green-800 hover:bg-green-100 hover:text-green-800" : ""}`}>
-                                        {hasPermission ? 'Granted' : 'Not Granted'}
-                                    </Badge>
+                     {/* Google Drive Section */}
+                     <div className="space-y-3 p-4 border rounded-lg bg-gray-50 relative overflow-hidden">
+                         {/* Loading/Connecting Overlay */}
+                         {(isDriveConnecting || (!isDriveSupported && isDriveInitialized)) && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-gray-50/80 backdrop-blur-sm z-10">
+                                <div className="flex flex-col items-center text-center p-4">
+                                    <RefreshCw className="h-6 w-6 text-blue-600 animate-spin mb-2" />
+                                    <p className="text-sm font-medium text-blue-800">
+                                        { !isDriveSupported && isDriveInitialized ? "Not Supported" : "Connecting..."}
+                                    </p>
+                                    {!isDriveSupported && isDriveInitialized && <p className="text-xs text-gray-600 mt-1">Drive API unavailable in this browser.</p>}
+                                    {isDriveConnecting && isDriveSupported && <p className="text-xs text-gray-600 mt-1">{driveConnectionStatus}</p>}
                                 </div>
                             </div>
+                        )}
 
-                            <div className="space-y-1 rounded-lg border p-3">
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="text-muted-foreground">Company Setup</span>
-                                    <Link href="/company">
-                                        <Badge variant="outline" className={`font-normal cursor-pointer ${companyInfo.name !== 'Your Company Name' ? "bg-green-100 text-green-800 hover:bg-green-100 hover:text-green-800" : ""}`}>
-                                            {companyInfo.name !== 'Your Company Name' ? 'Complete' : 'Incomplete'}
-                                        </Badge>
-                                    </Link>
+                         <div className="flex items-center justify-between">
+                             <h3 className="font-medium text-sm flex items-center gap-1.5 text-gray-700">
+                                <Cloud className="h-4 w-4" /> Google Drive Backup
+                            </h3>
+                             {!isDriveSupported ? (
+                                 <StatusIndicator status="error" text="Not Supported" />
+                             ) : !isDriveInitialized || isDriveLoading ? (
+                                 <StatusIndicator status="loading" text="Initializing..." />
+                             ) : isDriveAuthenticated ? (
+                                 <StatusIndicator status="success" text="Connected" />
+                             ) : (
+                                 <StatusIndicator status="info" text="Not Connected" />
+                             )}
+                         </div>
+
+                         <p className="text-xs text-gray-600">
+                             {isDriveSupported
+                                 ? "Automatically sync your data to Google Drive for safety and accessibility."
+                                 : "Google Drive connection is not available in your current browser."}
+                        </p>
+
+                        {isDriveSupported && isDriveInitialized && !isDriveLoading && (
+                            <div className="space-y-3 pt-2">
+                                <div className="flex items-center justify-between">
+                                     <label htmlFor="gdrive-switch" className="text-xs text-gray-600 flex items-center gap-1">
+                                        <input
+                                            type="checkbox"
+                                            id="gdrive-switch"
+                                            className="sr-only"
+                                            checked={isBackupEnabled}
+                                            onChange={(e) => handleToggleBackup(e.target.checked)}
+                                            disabled={isDriveConnecting}
+                                         />
+                                        <Switch
+                                             id="gdrive-switch-visual" // Use different ID for visual switch if needed by label
+                                             checked={isBackupEnabled}
+                                             onCheckedChange={handleToggleBackup}
+                                             disabled={isDriveConnecting}
+                                             aria-labelledby="gdrive-switch" // Link visual switch back to the label
+                                         />
+                                         <span className="ml-2">Enable Backup</span>
+                                     </label>
                                 </div>
-                            </div>
-                        </div>
-                    )}
+
+                                {isDriveAuthenticated && isBackupEnabled && (
+                                    <div className="space-y-2">
+                                         <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={handleSyncFiles}
+                                            className="w-full relative"
+                                            disabled={syncProgress != null}
+                                        >
+                                            {syncProgress != null ? (
+                                                <>
+                                                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                                    Syncing ({syncProgress.current}/{syncProgress.total})
+                                                    <Progress
+                                                        value={syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0}
+                                                        className="absolute bottom-0 left-0 right-0 h-1 rounded-none"
+                                                    />
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <RefreshCw className="mr-2 h-4 w-4" />
+                                                    Sync Now
+                                                </>
+                                            )}
+                                        </Button>
+                                        {syncResults && (
+                                            <Alert variant={syncResults.success ? "default" : "destructive"} className={`text-xs p-2 ${syncResults.success ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200'}`}>
+                                                <AlertDescription>
+                                                    {syncResults.success
+                                                        ? `Sync successful: ${syncResults.invoices} invoices, ${syncResults.customers} customers, ${syncResults.products} products.`
+                                                        : 'Sync failed. Please try again.'}
+                                                </AlertDescription>
+                                            </Alert>
+                                        )}
+                                    </div>
+                                )}
+
+                                {isDriveAuthenticated && (
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={handleSignOutDrive}
+                                        className="w-full text-red-600 hover:bg-red-50 hover:text-red-700"
+                                        disabled={isDriveConnecting}
+                                    >
+                                        <XCircle className="mr-2 h-4 w-4" /> Disconnect Drive
+                                    </Button>
+                                )}
+                             </div>
+                         )}
+                     </div>
+
+                    {/* Company Info Section */}
+                    <div className="space-y-3 p-4 border rounded-lg bg-gray-50">
+                         <div className="flex items-center justify-between">
+                            <h3 className="font-medium text-sm flex items-center gap-1.5 text-gray-700">
+                                <Settings className="h-4 w-4" /> Company Profile
+                            </h3>
+                            {companyInfo && companyInfo.name !== 'Your Company Name' ? (
+                                 <StatusIndicator status="success" text="Setup Complete" />
+                             ) : (
+                                 <StatusIndicator status="warning" text="Incomplete" />
+                             )}
+                         </div>
+                        {companyInfo ? (
+                             <>
+                                 <p className="text-xs text-gray-600">
+                                     {companyInfo.name !== 'Your Company Name'
+                                        ? `Profile for ${companyInfo.name} is configured.`
+                                        : "Please complete your company details for accurate invoices."}
+                                 </p>
+                                 <Button size="sm" variant="secondary" asChild className="w-full">
+                                     <Link href="/settings">
+                                         {companyInfo.name !== 'Your Company Name' ? 'View/Edit Profile' : 'Setup Company Profile'}
+                                         <ArrowUpRight className="ml-2 h-3 w-3" />
+                                     </Link>
+                                 </Button>
+                             </>
+                         ) : (
+                             <SectionSkeleton count={2} />
+                         )}
+                     </div>
                 </CardContent>
             </Card>
 
+
+            {/* Quick Actions (Simplified) */}
+            {/* We might integrate these actions elsewhere or keep them minimal */}
+            {/* Example: Maybe add "Create Invoice" button prominently */}
+
             {/* Analytics Overview */}
-            {isInitialized && hasPermission && !isLoading && (
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                            <PieChart className="h-5 w-5 text-gray-500" />
-                            Quick Analytics
-                        </CardTitle>
-                        <CardDescription>Overview of your invoicing activity</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid gap-6">
+            <Card className="bg-white shadow-sm border border-gray-200">
+                <CardHeader>
+                    <CardTitle className="text-lg font-semibold flex items-center gap-2 text-gray-800">
+                         <BarChart2 className="h-5 w-5 text-primary" />
+                         Analytics Overview
+                    </CardTitle>
+                     <CardDescription>A quick look at your key financial metrics.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    {!isSupported || !hasPermission ? (
+                         <Alert variant="default" className="bg-amber-50 border-amber-200 text-amber-800">
+                              <AlertTriangle className="h-4 w-4" />
+                             <AlertTitle>Storage Access Required</AlertTitle>
+                              <AlertDescription>
+                                Please grant local storage access in the 'System Setup' section above to view analytics.
+                            </AlertDescription>
+                        </Alert>
+                     ) : isFileSystemLoading ? (
+                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                             {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
+                         </div>
+                     ) : !analytics.hasData ? (
+                         <div className="text-center py-12 text-gray-500">
+                             <Database className="mx-auto h-12 w-12 text-gray-400 mb-3" />
+                            <h3 className="font-medium">No Invoice Data Yet</h3>
+                             <p className="text-sm mt-1">Create your first invoice to see analytics here.</p>
+                             <Button size="sm" className="mt-4" asChild>
+                                 <Link href="/create-invoice">Create Invoice</Link>
+                             </Button>
+                         </div>
+                    ) : (
+                         <>
                             {/* Key Metrics */}
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <Card className="border-none shadow-none bg-slate-50">
-                                    <CardContent className="p-4">
-                                        <div className="flex flex-col items-center text-center">
-                                            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total Invoices</p>
-                                            <p className="text-2xl font-bold">{analytics.totalInvoices}</p>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                                <Card className="border-none shadow-none bg-slate-50">
-                                    <CardContent className="p-4">
-                                        <div className="flex flex-col items-center text-center">
-                                            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">This Month</p>
-                                            <p className="text-2xl font-bold">{analytics.thisMonthInvoices}</p>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                                <Card className="border-none shadow-none bg-slate-50">
-                                    <CardContent className="p-4">
-                                        <div className="flex flex-col items-center text-center">
-                                            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Paid</p>
-                                            <div className="flex items-center gap-1">
-                                                <CheckCircle className="h-4 w-4 text-emerald-500" />
-                                                <p className="text-2xl font-bold">{analytics.paidInvoices}</p>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                                <Card className="border-none shadow-none bg-slate-50">
-                                    <CardContent className="p-4">
-                                        <div className="flex flex-col items-center text-center">
-                                            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Unpaid</p>
-                                            <div className="flex items-center gap-1">
-                                                <XCircle className="h-4 w-4 text-rose-500" />
-                                                <p className="text-2xl font-bold">{analytics.unpaidInvoices}</p>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
+                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                                <MetricCard title="Total Invoices" value={analytics.totalInvoices} />
+                                 <MetricCard title="This Month" value={analytics.thisMonthInvoices} />
+                                 <MetricCard title="Paid" value={analytics.paidInvoices} icon={CheckCircle} iconClass="text-green-600" />
+                                 <MetricCard title="Unpaid" value={analytics.unpaidInvoices} icon={XCircle} iconClass="text-red-600" />
+                             </div>
+
+                            <Separator className="my-6" />
+
+                             {/* Revenue & Chart */}
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-6 items-center">
+                                <div className="md:col-span-2 space-y-3">
+                                    <div>
+                                        <p className="text-xs text-gray-500 uppercase tracking-wider">Total Revenue</p>
+                                         <p className="text-2xl font-bold text-gray-900">{formatCurrency(analytics.totalRevenue)}</p>
+                                    </div>
+                                     <div>
+                                         <p className="text-xs text-gray-500 uppercase tracking-wider">This Month's Revenue</p>
+                                        <p className="text-lg font-medium text-gray-700">{formatCurrency(analytics.thisMonthRevenue)}</p>
+                                     </div>
+                                    <Button variant="outline" size="sm" asChild className="w-full">
+                                         <Link href="/analytics">
+                                             View Full Analytics
+                                             <ArrowUpRight className="ml-2 h-3 w-3" />
+                                         </Link>
+                                     </Button>
+                                 </div>
+
+                                <div className="md:col-span-3 h-52">
+                                    <p className="text-xs text-center font-medium text-gray-600 mb-2">Revenue Last 3 Months</p>
+                                     <ResponsiveContainer width="100%" height="100%">
+                                         <BarChart data={analytics.last3Months} margin={{ top: 5, right: 0, left: 0, bottom: 5 }}>
+                                             <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="#9ca3af" tickLine={false} axisLine={false} />
+                                             <YAxis
+                                                 tickFormatter={(value) => `€${value / 1000}k`}
+                                                tick={{ fontSize: 10 }}
+                                                 stroke="#9ca3af"
+                                                 tickLine={false}
+                                                 axisLine={false}
+                                                 width={35}
+                                             />
+                                             <Tooltip
+                                                contentStyle={{ fontSize: '12px', padding: '4px 8px', borderRadius: '4px', border: '1px solid #e5e7eb' }}
+                                                 formatter={(value: any) => [formatCurrency(value), 'Revenue']}
+                                                 cursor={{ fill: 'rgba(59, 130, 246, 0.1)' }}
+                                             />
+                                             <Bar dataKey="revenue" radius={[4, 4, 0, 0]} >
+                                                 {analytics.last3Months.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={BAR_CHART_COLOR} />
+                                                 ))}
+                                             </Bar>
+                                         </BarChart>
+                                     </ResponsiveContainer>
+                                 </div>
                             </div>
+                         </>
+                     )}
+                 </CardContent>
+             </Card>
 
-                            <Separator />
-
-                            {/* Revenue Overview */}
-                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                                <Card className="md:col-span-2 border-none shadow-none bg-slate-50">
-                                    <CardContent className="p-4">
-                                        <div className="flex flex-col">
-                                            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total Revenue</p>
-                                            <p className="text-2xl font-bold">{formatCurrency(analytics.totalRevenue)}</p>
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                                This month: {formatCurrency(analytics.thisMonthRevenue)}
-                                            </p>
-                                            <div className="mt-4">
-                                                <Button variant="outline" size="sm" asChild className="w-full">
-                                                    <Link href="/analytics" className="flex items-center justify-center">
-                                                        <span>View Detailed Analytics</span>
-                                                        <ArrowUpRight className="ml-2 h-3 w-3" />
-                                                    </Link>
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                {/* Invoice Status Chart */}
-                                <div className="md:col-span-3">
-                                    {analytics.last3Months.some(m => m.revenue > 0) ? (
-                                        <div className="h-44">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <BarChart data={analytics.last3Months}>
-                                                    <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                                                    <YAxis
-                                                        tickFormatter={(value) =>
-                                                            new Intl.NumberFormat('de-DE', {
-                                                                style: 'currency',
-                                                                currency: 'EUR',
-                                                                notation: 'compact',
-                                                                maximumFractionDigits: 1
-                                                            }).format(value)
-                                                        }
-                                                        tickLine={false}
-                                                        axisLine={false}
-                                                    />
-                                                    <Tooltip
-                                                        formatter={(value: any) => [formatCurrency(value), 'Revenue']}
-                                                    />
-                                                    <Bar
-                                                        dataKey="revenue"
-                                                        fill="#3b82f6"
-                                                        radius={[4, 4, 0, 0]}
-                                                    />
-                                                </BarChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    ) : (
-                                        <div className="flex items-center justify-center h-44 bg-slate-50 rounded-lg">
-                                            <p className="text-muted-foreground text-sm">No revenue data available</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+            {/* Optional: Add a Help/Support Link Card */}
+             <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 shadow-sm">
+                 <CardContent className="p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-blue-100 p-2 rounded-full">
+                            <HelpCircle className="h-5 w-5 text-blue-600" />
+                         </div>
+                         <div>
+                            <h3 className="font-semibold text-gray-800">Need Help?</h3>
+                            <p className="text-sm text-gray-600">Find answers in our documentation or contact support.</p>
                         </div>
-                    </CardContent>
-                </Card>
-            )}
-        </div>
-    );
-} 
+                     </div>
+                     <Button variant="outline" size="sm" className="bg-white">
+                        Go to Help Center
+                     </Button>
+                 </CardContent>
+             </Card>
+
+         </div>
+     );
+ }
+
+ // Helper component for Metric Cards in Analytics
+ const MetricCard = ({ title, value, icon: Icon, iconClass }: { title: string; value: string | number; icon?: React.ElementType; iconClass?: string }) => (
+    <Card className="bg-gray-50 border border-gray-200 shadow-none">
+         <CardContent className="p-4">
+             <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{title}</p>
+             <div className="flex items-center gap-2">
+                 {Icon && <Icon className={`h-4 w-4 ${iconClass ?? 'text-gray-600'}`} />}
+                 <p className="text-xl md:text-2xl font-bold text-gray-900">{value}</p>
+             </div>
+         </CardContent>
+     </Card>
+ );

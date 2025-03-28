@@ -11,7 +11,7 @@ import { Label } from '../../components/ui/label';
 import { searchInvoices, getMonthlyTotals } from '../../utils/invoiceUtils';
 import { generateInvoicePDF } from '@/utils/pdfUtils';
 import { Invoice } from '../../interfaces';
-import { PlusCircle, Download, Trash, Search, FileText, AlertCircle, FolderOpen, Clock, X, CheckCircle, ChevronLeft, ChevronRight, ArrowUpDown, RefreshCw } from 'lucide-react';
+import { PlusCircle, Download, Trash, Search, FileText, AlertCircle, FolderOpen, Clock, X, CheckCircle, ChevronLeft, ChevronRight, ArrowUpDown, RefreshCw, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { useFileSystem } from '../../contexts/FileSystemContext';
 import { useCompany } from '../../contexts/CompanyContext';
@@ -410,69 +410,80 @@ export default function Invoices() {
     };
 
     return (
-        <div className="min-h-screen">
+        <div className="min-h-screen bg-gray-50/50">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {/* Header with actions */}
-                <header className="mb-6">
+                <div className="mb-8">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
                         <div>
-                            <h1 className="text-3xl font-bold text-gray-900">Invoice Dashboard</h1>
-                            {lastRefreshed && (
-                                <p className="text-sm text-gray-500 mt-1">
-                                    Last refreshed: {formatRefreshTime()}
-                                </p>
-                            )}
+                            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Invoices</h1>
+                            <p className="text-sm text-gray-600 mt-1">
+                                Manage your invoices and track payment status
+                                {lastRefreshed && (
+                                    <span className="ml-2 text-gray-500 inline-flex items-center">
+                                        <Clock className="h-3 w-3 mr-1" />
+                                        Last updated: {formatRefreshTime()}
+                                    </span>
+                                )}
+                            </p>
                         </div>
-                        <div className="flex flex-wrap gap-3">
+                        
+                        <div className="flex flex-wrap gap-2">
                             <Button
                                 variant="outline"
                                 onClick={toggleAutoRefresh}
                                 title={`${autoRefreshDisabled ? 'Enable' : 'Disable'} auto-refresh`}
-                                className="flex items-center"
+                                className={`text-xs px-2.5 py-1 h-9 border ${autoRefreshDisabled ? 'text-red-600 border-red-200 bg-red-50 hover:bg-red-100' : 'text-green-600 border-green-200 bg-green-50 hover:bg-green-100'}`}
                                 size="sm"
                             >
-                                <Clock className={`mr-2 h-4 w-4 ${autoRefreshDisabled ? 'text-red-500' : 'text-green-500'}`} />
+                                <Clock className={`mr-1.5 h-3.5 w-3.5`} />
                                 {autoRefreshDisabled ? 'Auto-refresh off' : 'Auto-refresh on'}
                             </Button>
+                            
                             <Button
                                 variant="outline"
                                 onClick={handleRefresh}
                                 disabled={isLoading || !hasPermission}
-                                className="flex items-center"
+                                className="text-xs px-2.5 py-1 h-9 bg-white"
                                 size="sm"
                             >
-                                <FolderOpen className="mr-2 h-4 w-4" />
+                                <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
                                 Refresh
                             </Button>
-                            <Link href="/create-invoice">
-                                <Button className="flex items-center" size="sm">
-                                    <PlusCircle className="mr-2 h-4 w-4" />
-                                    Create New Invoice
-                                </Button>
-                            </Link>
+                            
+                            <Button 
+                                className="text-xs px-3 py-1 h-9 bg-primary hover:bg-primary/90 text-white" 
+                                size="sm"
+                                asChild
+                            >
+                                <Link href="/create-invoice" className="flex items-center">
+                                    <PlusCircle className="mr-1.5 h-3.5 w-3.5" />
+                                    New Invoice
+                                </Link>
+                            </Button>
                         </div>
                     </div>
 
-                    {/* Error states */}
+                    {/* Error & permission states */}
                     {loadError && (
-                        <div className="p-4 mb-5 rounded-lg bg-red-50 text-red-700 border border-red-200 flex items-center">
-                            <AlertCircle className="h-5 w-5 text-red-600 mr-2 flex-shrink-0" />
-                            <p className="font-medium">{loadError}</p>
+                        <div className="p-4 mb-5 rounded-lg bg-red-50 text-red-700 border border-red-200 flex items-center text-sm">
+                            <AlertCircle className="h-5 w-5 text-red-500 mr-2 flex-shrink-0" />
+                            <p>{loadError}</p>
                         </div>
                     )}
 
                     {isSupported && !hasPermission && !isLoading && (
-                        <div className="p-4 mb-5 rounded-lg bg-yellow-50 text-yellow-800 border border-yellow-200 flex items-center justify-between">
-                            <div className="flex items-center">
-                                <AlertCircle className="h-5 w-5 text-yellow-600 mr-2 flex-shrink-0" />
+                        <div className="p-4 mb-5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+                            <div className="flex items-start sm:items-center gap-2">
+                                <AlertTriangle className="h-5 w-5 text-amber-500 mr-1 flex-shrink-0 mt-0.5 sm:mt-0" />
                                 <div>
                                     <p className="font-medium">Storage access required</p>
-                                    <p className="text-sm text-yellow-700">Please grant permission to access file storage for managing your invoices.</p>
+                                    <p className="text-sm text-amber-700 mt-0.5">Grant permission to access file storage for managing invoices</p>
                                 </div>
                             </div>
                             <Button
                                 onClick={requestPermission}
-                                className="bg-yellow-500 hover:bg-yellow-600"
+                                className="sm:self-start bg-amber-600 hover:bg-amber-700 text-white"
                                 size="sm"
                             >
                                 Grant Permission
@@ -481,312 +492,422 @@ export default function Invoices() {
                     )}
 
                     {!isSupported && (
-                        <div className="p-4 mb-5 rounded-lg bg-red-50 text-red-700 border border-red-200 flex items-center">
-                            <AlertCircle className="h-5 w-5 text-red-600 mr-2 flex-shrink-0" />
+                        <div className="p-4 mb-5 rounded-lg bg-red-50 text-red-700 border border-red-200 flex items-start gap-2">
+                            <AlertCircle className="h-5 w-5 text-red-500 mr-1 flex-shrink-0 mt-0.5" />
                             <div>
                                 <p className="font-medium">Browser not supported</p>
-                                <p className="text-sm">Your browser doesn't support the File System API. Please use a modern browser like Chrome.</p>
+                                <p className="text-sm mt-0.5">Your browser doesn't support the File System API. Please use Chrome or Edge.</p>
                             </div>
                         </div>
                     )}
-                </header>
+                </div>
 
-                {/* Main content - Search, Filters, and Invoices combined in a single card */}
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                    {/* Search bar */}
-                    <div className="p-5 border-b border-gray-200">
-                        <form onSubmit={handleSearch} className="flex gap-3">
-                            <div className="flex-1 relative">
-                                <Input
-                                    type="text"
-                                    placeholder="Search by invoice number or customer name"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
+                {/* Main content - New unified card design */}
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    {/* Search and filters area */}
+                    <div className="border-b border-gray-100">
+                        {/* Search bar - cleaner, focused design */}
+                        <div className="p-4 md:p-5">
+                            <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
+                                <div className="relative flex-grow">
+                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                    <Input
+                                        type="text"
+                                        placeholder="Search invoices by number, customer name, or amount..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        disabled={isLoading || !hasPermission}
+                                        className="pl-10 py-2 h-10 bg-gray-50 border-gray-200 rounded-md w-full focus:bg-white"
+                                    />
+                                    {searchTerm && (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 hover:bg-gray-200 rounded-full p-1"
+                                            onClick={handleClearSearch}
+                                            title="Clear search"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </Button>
+                                    )}
+                                </div>
+                                <Button
+                                    type="submit"
+                                    className="h-10 px-4 bg-gray-900 hover:bg-gray-800 text-white flex items-center shrink-0"
                                     disabled={isLoading || !hasPermission}
-                                    className="pr-10"
-                                />
-                                {searchTerm && (
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8"
-                                        onClick={handleClearSearch}
-                                        title="Clear search"
-                                    >
-                                        <X className="h-4 w-4" />
-                                    </Button>
-                                )}
-                            </div>
-                            <Button
-                                type="submit"
-                                className="flex items-center"
-                                disabled={isLoading || !hasPermission}
-                                size="sm"
-                            >
-                                <Search className="mr-2 h-4 w-4" />
-                                Search
-                            </Button>
-                        </form>
-                    </div>
+                                >
+                                    <Search className="mr-2 h-4 w-4" />
+                                    Search
+                                </Button>
+                            </form>
+                        </div>
 
-                    {/* Filters */}
-                    <div className="p-5 bg-gray-50 border-b border-gray-200">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {/* Payment Status Filter */}
-                            <div>
-                                <h3 className="text-sm font-medium mb-2 text-gray-700">Payment Status</h3>
-                                <div className="flex gap-4 md:flex-col md:gap-2">
-                                    <div className="flex items-center space-x-2">
-                                        <Checkbox
-                                            id="filter-paid"
-                                            checked={showPaid}
-                                            onCheckedChange={(checked) => setShowPaid(checked as boolean)}
-                                        />
-                                        <Label htmlFor="filter-paid" className="text-sm">Show Paid</Label>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                        <Checkbox
-                                            id="filter-unpaid"
-                                            checked={showUnpaid}
-                                            onCheckedChange={(checked) => setShowUnpaid(checked as boolean)}
-                                        />
-                                        <Label htmlFor="filter-unpaid" className="text-sm">Show Unpaid</Label>
+                        {/* Improved filter design with cleaner UI */}
+                        <div className="p-4 md:p-5 bg-gray-50 border-t border-gray-100">
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                                {/* Payment Status Filter - 3 columns on desktop */}
+                                <div className="md:col-span-3">
+                                    <h3 className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Payment Status</h3>
+                                    <div className="flex flex-row md:flex-col gap-4 md:gap-2.5">
+                                        <div className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id="filter-paid"
+                                                checked={showPaid}
+                                                onCheckedChange={(checked) => setShowPaid(checked as boolean)}
+                                                className="text-green-600 focus:ring-green-500"
+                                            />
+                                            <Label htmlFor="filter-paid" className="text-sm flex items-center">
+                                                <div className="h-2 w-2 rounded-full bg-green-500 mr-1.5"></div>
+                                                Paid Invoices
+                                            </Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id="filter-unpaid"
+                                                checked={showUnpaid}
+                                                onCheckedChange={(checked) => setShowUnpaid(checked as boolean)}
+                                                className="text-amber-600 focus:ring-amber-500"
+                                            />
+                                            <Label htmlFor="filter-unpaid" className="text-sm flex items-center">
+                                                <div className="h-2 w-2 rounded-full bg-amber-500 mr-1.5"></div>
+                                                Unpaid Invoices
+                                            </Label>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Date Filter */}
-                            <div>
-                                <h3 className="text-sm font-medium mb-2 text-gray-700">Time Period</h3>
-                                <Select
-                                    value={dateFilter}
-                                    onValueChange={setDateFilter}
-                                >
-                                    <SelectTrigger className="w-full bg-white">
-                                        <SelectValue placeholder="Select time period" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Time</SelectItem>
-                                        <SelectItem value="thisMonth">This Month</SelectItem>
-                                        <SelectItem value="lastMonth">Last Month</SelectItem>
-                                        <SelectItem value="thisYear">This Year</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                                {/* Date Filter - 4 columns on desktop */}
+                                <div className="md:col-span-5">
+                                    <h3 className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Date Range</h3>
+                                    <Select
+                                        value={dateFilter}
+                                        onValueChange={setDateFilter}
+                                    >
+                                        <SelectTrigger className="w-full h-9 bg-white border-gray-200 focus:ring-primary/40">
+                                            <SelectValue placeholder="Select time period" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All Dates</SelectItem>
+                                            <SelectItem value="thisMonth">This Month</SelectItem>
+                                            <SelectItem value="lastMonth">Last Month</SelectItem>
+                                            <SelectItem value="thisYear">This Year</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
 
-                            {/* Items per page */}
-                            <div>
-                                <h3 className="text-sm font-medium mb-2 text-gray-700">Items per page</h3>
-                                <Select
-                                    value={itemsPerPage.toString()}
-                                    onValueChange={handleItemsPerPageChange}
-                                >
-                                    <SelectTrigger className="w-full bg-white">
-                                        <SelectValue placeholder="Select items per page" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="5">5</SelectItem>
-                                        <SelectItem value="10">10</SelectItem>
-                                        <SelectItem value="20">20</SelectItem>
-                                        <SelectItem value="50">50</SelectItem>
-                                        <SelectItem value="100">100</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                {/* Items per page - 4 columns on desktop */}
+                                <div className="md:col-span-4">
+                                    <h3 className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Items per page</h3>
+                                    <Select
+                                        value={itemsPerPage.toString()}
+                                        onValueChange={handleItemsPerPageChange}
+                                    >
+                                        <SelectTrigger className="w-full h-9 bg-white border-gray-200 focus:ring-primary/40">
+                                            <SelectValue placeholder="Results per page" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="5">5 invoices</SelectItem>
+                                            <SelectItem value="10">10 invoices</SelectItem>
+                                            <SelectItem value="20">20 invoices</SelectItem>
+                                            <SelectItem value="50">50 invoices</SelectItem>
+                                            <SelectItem value="100">100 invoices</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Invoices list header */}
-                    <div className="p-5 border-b border-gray-200">
-                        <h2 className="text-lg font-semibold text-gray-800">Your Invoices</h2>
-                    </div>
+                    {/* Invoices list - Improved table design */}
+                    <div>
+                        {/* Table header - subtle and clean */}
+                        <div className="px-6 py-4 border-b border-gray-100">
+                            <h2 className="text-lg font-medium text-gray-800 flex items-center">
+                                Invoice List
+                                {filteredInvoices.length > 0 && (
+                                    <span className="ml-2 text-sm font-normal text-gray-500">
+                                        ({filteredInvoices.length} {filteredInvoices.length === 1 ? 'invoice' : 'invoices'})
+                                    </span>
+                                )}
+                            </h2>
+                        </div>
 
-                    {/* Invoices table */}
-                    <div className="overflow-x-auto">
+                        {/* Loading state */}
                         {isLoading ? (
-                            <div className="flex justify-center items-center p-10">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                                <span className="ml-3 text-gray-600">Loading invoices...</span>
+                            <div className="flex flex-col items-center justify-center py-12">
+                                <div className="rounded-full bg-primary/10 p-3 mb-3">
+                                    <RefreshCw className="h-6 w-6 text-primary animate-spin" />
+                                </div>
+                                <p className="text-gray-600 font-medium">Loading invoices...</p>
+                                <p className="text-sm text-gray-500 mt-1">This might take a moment</p>
                             </div>
                         ) : !hasPermission ? (
-                            <p className="text-center py-10 text-gray-500">Grant storage permission to view invoices</p>
-                        ) : filteredInvoices.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-14 px-4 text-center">
-                                <div className="bg-gray-100 p-3 rounded-full mb-3">
-                                    <FileText className="h-8 w-8 text-gray-400" />
+                            <div className="flex flex-col items-center justify-center py-16">
+                                <div className="bg-amber-100 p-3 rounded-full mb-3">
+                                    <AlertTriangle className="h-6 w-6 text-amber-600" />
                                 </div>
-                                <p className="text-gray-600 mb-1">No invoices found</p>
-                                <p className="text-sm text-gray-500 mb-4">Create your first invoice to get started</p>
-                                <Link href="/create-invoice">
-                                    <Button size="sm">
-                                        <PlusCircle className="mr-2 h-4 w-4" />
-                                        Create Invoice
+                                <p className="text-gray-700 font-medium">Storage access needed</p>
+                                <p className="text-sm text-gray-500 mt-1 mb-4 max-w-md text-center">
+                                    Grant permission using the button above to view and manage your invoices
+                                </p>
+                                <Button 
+                                    onClick={requestPermission} 
+                                    variant="outline"
+                                    className="border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                >
+                                    Grant Access
+                                </Button>
+                            </div>
+                        ) : filteredInvoices.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-16">
+                                <div className="bg-gray-100 p-3 rounded-full mb-3">
+                                    <FileText className="h-6 w-6 text-gray-400" />
+                                </div>
+                                <p className="text-gray-700 font-medium">No invoices found</p>
+                                <p className="text-sm text-gray-500 mt-1 mb-4">
+                                    {searchTerm ? 'Try a different search term or adjust your filters' : 'Create your first invoice to get started'}
+                                </p>
+                                {!searchTerm ? (
+                                    <Button asChild>
+                                        <Link href="/create-invoice" className="flex items-center">
+                                            <PlusCircle className="mr-2 h-4 w-4" />
+                                            Create Invoice
+                                        </Link>
                                     </Button>
-                                </Link>
+                                ) : (
+                                    <Button variant="outline" onClick={handleClearSearch}>
+                                        <X className="mr-2 h-4 w-4" />
+                                        Clear Search
+                                    </Button>
+                                )}
                             </div>
                         ) : (
-                            <table className="w-full table-auto">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            <button
-                                                className="flex items-center font-medium text-gray-700 hover:text-gray-900"
-                                                onClick={() => toggleSort('invoice_number')}
-                                            >
-                                                Invoice Number
-                                                <ArrowUpDown className={`ml-1 h-4 w-4 ${sortField === 'invoice_number' ? 'opacity-100 text-blue-600' : 'opacity-30'}`} />
-                                            </button>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            <button
-                                                className="flex items-center font-medium text-gray-700 hover:text-gray-900"
-                                                onClick={() => toggleSort('invoice_date')}
-                                            >
-                                                Date
-                                                <ArrowUpDown className={`ml-1 h-4 w-4 ${sortField === 'invoice_date' ? 'opacity-100 text-blue-600' : 'opacity-30'}`} />
-                                            </button>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            <button
-                                                className="flex items-center font-medium text-gray-700 hover:text-gray-900"
-                                                onClick={() => toggleSort('customer.name')}
-                                            >
-                                                Customer
-                                                <ArrowUpDown className={`ml-1 h-4 w-4 ${sortField === 'customer.name' ? 'opacity-100 text-blue-600' : 'opacity-30'}`} />
-                                            </button>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            <button
-                                                className="flex items-center ml-auto font-medium text-gray-700 hover:text-gray-900"
-                                                onClick={() => toggleSort('total')}
-                                            >
-                                                Total
-                                                <ArrowUpDown className={`ml-1 h-4 w-4 ${sortField === 'total' ? 'opacity-100 text-blue-600' : 'opacity-30'}`} />
-                                            </button>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Actions
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
-                                    {displayedInvoices.map((invoice) => (
-                                        <tr key={invoice.id} className="hover:bg-gray-50 transition-colors">
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                {invoice.invoice_number}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {format(new Date(invoice.invoice_date), 'dd.MM.yyyy')}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {invoice.customer.name}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
-                                                {formatCurrency(invoice.total)}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
-                                                <div className="flex justify-center gap-2">
-                                                    <Button
-                                                        variant={invoice.is_paid ? "default" : "outline"}
-                                                        size="sm"
-                                                        onClick={() => handleTogglePaidStatus(invoice)}
-                                                        title={invoice.is_paid ? "Mark as Unpaid" : "Mark as Paid"}
-                                                        className={`h-8 w-8 p-0 transition-all duration-200 ${
-                                                            actionLoading[invoice.invoice_number] === 'updating' ? 'opacity-70' : ''
-                                                        }`}
-                                                        disabled={Boolean(actionLoading[invoice.invoice_number])}
-                                                    >
-                                                        {actionLoading[invoice.invoice_number] === 'updating' ? (
-                                                            <RefreshCw className="h-4 w-4 animate-spin" />
-                                                        ) : (
-                                                            <CheckCircle className={`h-4 w-4 ${invoice.is_paid ? 'text-white' : 'text-gray-500'}`} />
-                                                        )}
-                                                    </Button>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => handleDownloadPDF(invoice)}
-                                                        title="Download PDF"
-                                                        className="h-8 w-8 p-0"
-                                                        disabled={Boolean(actionLoading[invoice.invoice_number])}
-                                                    >
-                                                        <FileText className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="destructive"
-                                                        size="sm"
-                                                        onClick={() => handleDelete(invoice.invoice_number)}
-                                                        title="Delete Invoice"
-                                                        className={`h-8 w-8 p-0 transition-all duration-200 ${
-                                                            actionLoading[invoice.invoice_number] === 'deleting' ? 'opacity-70' : ''
-                                                        }`}
-                                                        disabled={Boolean(actionLoading[invoice.invoice_number])}
-                                                    >
-                                                        {actionLoading[invoice.invoice_number] === 'deleting' ? (
-                                                            <RefreshCw className="h-4 w-4 animate-spin text-white" />
-                                                        ) : (
-                                                            <Trash className="h-4 w-4" />
-                                                        )}
-                                                    </Button>
-                                                </div>
-                                            </td>
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="bg-gray-50 border-y border-gray-200">
+                                            <th className="px-6 py-3 text-left">
+                                                <button
+                                                    className="group flex items-center text-xs font-medium text-gray-600 uppercase tracking-wider hover:text-gray-900"
+                                                    onClick={() => toggleSort('invoice_number')}
+                                                >
+                                                    Invoice #
+                                                    <ArrowUpDown className={`ml-1 h-3.5 w-3.5 transition-colors ${
+                                                        sortField === 'invoice_number' 
+                                                            ? 'text-primary' 
+                                                            : 'text-gray-400 group-hover:text-gray-600'
+                                                    }`} />
+                                                </button>
+                                            </th>
+                                            <th className="px-6 py-3 text-left">
+                                                <button
+                                                    className="group flex items-center text-xs font-medium text-gray-600 uppercase tracking-wider hover:text-gray-900"
+                                                    onClick={() => toggleSort('invoice_date')}
+                                                >
+                                                    Date
+                                                    <ArrowUpDown className={`ml-1 h-3.5 w-3.5 transition-colors ${
+                                                        sortField === 'invoice_date' 
+                                                            ? 'text-primary' 
+                                                            : 'text-gray-400 group-hover:text-gray-600'
+                                                    }`} />
+                                                </button>
+                                            </th>
+                                            <th className="px-6 py-3 text-left">
+                                                <button
+                                                    className="group flex items-center text-xs font-medium text-gray-600 uppercase tracking-wider hover:text-gray-900"
+                                                    onClick={() => toggleSort('customer.name')}
+                                                >
+                                                    Customer
+                                                    <ArrowUpDown className={`ml-1 h-3.5 w-3.5 transition-colors ${
+                                                        sortField === 'customer.name' 
+                                                            ? 'text-primary' 
+                                                            : 'text-gray-400 group-hover:text-gray-600'
+                                                    }`} />
+                                                </button>
+                                            </th>
+                                            <th className="px-6 py-3 text-right">
+                                                <button
+                                                    className="group flex items-center ml-auto text-xs font-medium text-gray-600 uppercase tracking-wider hover:text-gray-900"
+                                                    onClick={() => toggleSort('total')}
+                                                >
+                                                    Amount
+                                                    <ArrowUpDown className={`ml-1 h-3.5 w-3.5 transition-colors ${
+                                                        sortField === 'total' 
+                                                            ? 'text-primary' 
+                                                            : 'text-gray-400 group-hover:text-gray-600'
+                                                    }`} />
+                                                </button>
+                                            </th>
+                                            <th className="px-6 py-3 text-center">
+                                                <span className="text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                                    Status
+                                                </span>
+                                            </th>
+                                            <th className="px-6 py-3 text-center">
+                                                <span className="text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                                    Actions
+                                                </span>
+                                            </th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {displayedInvoices.map((invoice) => (
+                                            <tr 
+                                                key={invoice.id} 
+                                                className="hover:bg-gray-50/80 transition-colors"
+                                            >
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <span className="text-sm font-medium text-gray-900">
+                                                        {invoice.invoice_number}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <span className="text-sm text-gray-600">
+                                                        {format(new Date(invoice.invoice_date), 'dd.MM.yyyy')}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <span className="text-sm text-gray-600">
+                                                        {invoice.customer.name}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-right">
+                                                    <span className="text-sm font-medium text-gray-900">
+                                                        {formatCurrency(invoice.total)}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <div className="flex justify-center">
+                                                        <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
+                                                            invoice.is_paid 
+                                                                ? 'bg-green-100 text-green-800'
+                                                                : 'bg-amber-100 text-amber-800'
+                                                        }`}>
+                                                            {invoice.is_paid ? 'Paid' : 'Pending'}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <div className="flex justify-center gap-1.5">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => handleTogglePaidStatus(invoice)}
+                                                            title={invoice.is_paid ? "Mark as Unpaid" : "Mark as Paid"}
+                                                            className={`h-8 w-8 rounded-full ${
+                                                                invoice.is_paid 
+                                                                    ? 'text-green-600 hover:bg-green-50' 
+                                                                    : 'text-amber-600 hover:bg-amber-50'
+                                                            } ${actionLoading[invoice.invoice_number] === 'updating' ? 'opacity-70' : ''}`}
+                                                            disabled={Boolean(actionLoading[invoice.invoice_number])}
+                                                        >
+                                                            {actionLoading[invoice.invoice_number] === 'updating' ? (
+                                                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                                            ) : (
+                                                                <CheckCircle className="h-4 w-4" />
+                                                            )}
+                                                        </Button>
+                                                        
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => handleDownloadPDF(invoice)}
+                                                            title="Download PDF"
+                                                            className="h-8 w-8 rounded-full text-blue-600 hover:bg-blue-50"
+                                                            disabled={Boolean(actionLoading[invoice.invoice_number])}
+                                                        >
+                                                            <Download className="h-4 w-4" />
+                                                        </Button>
+                                                        
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => handleDelete(invoice.invoice_number)}
+                                                            title="Delete Invoice"
+                                                            className={`h-8 w-8 rounded-full text-red-600 hover:bg-red-50 ${
+                                                                actionLoading[invoice.invoice_number] === 'deleting' ? 'opacity-70' : ''
+                                                            }`}
+                                                            disabled={Boolean(actionLoading[invoice.invoice_number])}
+                                                        >
+                                                            {actionLoading[invoice.invoice_number] === 'deleting' ? (
+                                                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                                            ) : (
+                                                                <Trash className="h-4 w-4" />
+                                                            )}
+                                                        </Button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         )}
 
-                        {/* Pagination */}
+                        {/* Improved pagination design */}
                         {filteredInvoices.length > 0 && (
-                            <div className="flex flex-col sm:flex-row justify-between items-center px-6 py-4 bg-gray-50 border-t border-gray-200">
-                                <div className="text-sm text-gray-500 mb-4 sm:mb-0">
-                                    Showing {Math.min(filteredInvoices.length, 1 + (currentPage - 1) * itemsPerPage)}-{Math.min(currentPage * itemsPerPage, filteredInvoices.length)} of {filteredInvoices.length} invoices
+                            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+                                <div className="text-sm text-gray-600">
+                                    Showing <span className="font-medium">{Math.min(filteredInvoices.length, 1 + (currentPage - 1) * itemsPerPage)}</span> to{" "}
+                                    <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredInvoices.length)}</span> of{" "}
+                                    <span className="font-medium">{filteredInvoices.length}</span> invoices
                                 </div>
-                                <div className="flex gap-2">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => goToPage(1)}
-                                        disabled={currentPage === 1}
-                                        title="First Page"
-                                        className="h-8 px-2"
-                                    >
-                                        <ChevronLeft className="h-4 w-4 mr-1" /> First
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => goToPage(currentPage - 1)}
-                                        disabled={currentPage === 1}
-                                        title="Previous Page"
-                                        className="h-8 w-8 p-0"
-                                    >
-                                        <ChevronLeft className="h-4 w-4" />
-                                    </Button>
-                                    <span className="flex items-center px-3 h-8 bg-white border border-gray-300 rounded text-sm">
-                                        {currentPage} / {totalPages}
-                                    </span>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => goToPage(currentPage + 1)}
-                                        disabled={currentPage === totalPages}
-                                        title="Next Page"
-                                        className="h-8 w-8 p-0"
-                                    >
-                                        <ChevronRight className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => goToPage(totalPages)}
-                                        disabled={currentPage === totalPages}
-                                        title="Last Page"
-                                        className="h-8 px-2"
-                                    >
-                                        Last <ChevronRight className="h-4 w-4 ml-1" />
-                                    </Button>
+                                <div className="flex items-center">
+                                    <div className="hidden md:flex mr-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => goToPage(1)}
+                                            disabled={currentPage === 1}
+                                            title="First Page"
+                                            className="h-8 px-2.5 border-gray-200 text-gray-600 rounded-r-none"
+                                        >
+                                            First
+                                        </Button>
+                                    </div>
+                                    <div className="flex rounded-md shadow-sm">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => goToPage(currentPage - 1)}
+                                            disabled={currentPage === 1}
+                                            title="Previous Page"
+                                            className="h-8 px-2 border-gray-200 text-gray-600 rounded-r-none"
+                                        >
+                                            <ChevronLeft className="h-4 w-4" />
+                                        </Button>
+                                        <div className="relative inline-flex items-center px-3 h-8 text-sm font-medium text-gray-800 bg-white border border-gray-200 border-x-0">
+                                            <span className="mx-1">Page</span>
+                                            <span className="bg-gray-100 text-gray-800 py-0.5 px-1.5 rounded">
+                                                {currentPage} 
+                                            </span>
+                                            <span className="mx-1">of</span>
+                                            <span className="bg-gray-100 text-gray-800 py-0.5 px-1.5 rounded">{totalPages}</span>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => goToPage(currentPage + 1)}
+                                            disabled={currentPage === totalPages}
+                                            title="Next Page"
+                                            className="h-8 px-2 border-gray-200 text-gray-600 rounded-l-none"
+                                        >
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                    <div className="hidden md:flex ml-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => goToPage(totalPages)}
+                                            disabled={currentPage === totalPages}
+                                            title="Last Page"
+                                            className="h-8 px-2.5 border-gray-200 text-gray-600 rounded-l-none"
+                                        >
+                                            Last
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         )}

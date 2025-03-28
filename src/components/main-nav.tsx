@@ -55,10 +55,10 @@ export function MainNav() {
                     </Link>
 
                     <Link
-                        href="/company"
+                        href="/settings"
                         className={cn(
                             "flex items-center rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
-                            pathname === "/company" && "bg-accent text-accent-foreground"
+                            pathname === "/settings" && "bg-accent text-accent-foreground"
                         )}
                     >
                         <Settings className="mr-2 h-4 w-4" />
