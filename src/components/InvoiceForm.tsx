@@ -27,10 +27,11 @@ import { CustomerSelector } from './CustomerSelector';
 import ProductSelector from './ProductSelector';
 
 interface InvoiceFormProps {
+    formId?: string;
     existingInvoice?: Invoice;
 }
 
-export function InvoiceForm({ existingInvoice }: InvoiceFormProps) {
+export function InvoiceForm({ formId, existingInvoice }: InvoiceFormProps) {
     const router = useRouter();
     const { saveInvoices, hasPermission, loadInvoices } = useFileSystem();
     const { companyInfo } = useCompany();
@@ -240,7 +241,7 @@ export function InvoiceForm({ existingInvoice }: InvoiceFormProps) {
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-8">
+        <form id={formId} onSubmit={handleSubmit} className="space-y-8">
             <Card>
                 <CardHeader>
                     <CardTitle>Invoice Details</CardTitle>
