@@ -309,7 +309,6 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
             return { invoices: 0, customers: 0, products: 0, success: false };
         }
 
-        setIsLoading(true);
         setSyncProgress({ current: 0, total: 0 }); // Reset progress at the start
 
         const handleProgress = (progress: { current: number, total: number }) => {
@@ -319,14 +318,13 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
 
         try {
             console.log('Starting full sync to Google Drive...');
-            const result = await syncAllFilesToGoogleDrive(handleProgress); // Pass callback
+            const result = await syncAllFilesToGoogleDrive(handleProgress);
             console.log('Sync complete:', result);
             return result;
         } catch (error) {
             console.error('Error syncing all files to Google Drive:', error);
             return { invoices: 0, customers: 0, products: 0, success: false };
         } finally {
-            setIsLoading(false);
             setSyncProgress(null); // Clear progress when done
         }
     }, [isSupported, isAuthenticated]);

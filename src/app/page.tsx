@@ -169,8 +169,7 @@ export default function HomePage() {
         return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
     };
 
-    // Sync all local files to Google Drive
-    const [isSyncing, setIsSyncing] = useState(false);
+    // Sync Results State (no longer need isSyncing)
     const [syncResults, setSyncResults] = useState<{
         invoices: number;
         customers: number;
@@ -179,13 +178,13 @@ export default function HomePage() {
     } | null>(null);
 
     const handleSyncFiles = async () => {
-        if (!isDriveAuthenticated || !isBackupEnabled) return;
-        
+        if (!isDriveAuthenticated || !isBackupEnabled || syncProgress != null) return; // Added check for syncProgress
+
+        setSyncResults(null); // Clear previous results
         try {
-            setIsSyncing(true);
             const results = await syncAllFiles();
             setSyncResults(results);
-            
+
             if (results.success) {
                 showSuccess(`Synced ${results.invoices} invoices, ${results.customers} customers, and ${results.products} products to Google Drive.`);
             } else {
@@ -195,8 +194,7 @@ export default function HomePage() {
             console.error('Error syncing files:', error);
             showError('Error syncing files to Google Drive.');
         } finally {
-            setIsSyncing(false);
-            // Auto-clear results after 10 seconds
+            // Auto-clear results message after 10 seconds
             setTimeout(() => setSyncResults(null), 10000);
         }
     };
@@ -362,13 +360,10 @@ export default function HomePage() {
                                 
                                 {/* Sync Results Display */}
                                 {syncResults && (
-                                    <div className="text-xs bg-blue-50 p-2 rounded border border-blue-200 animate-in fade-in duration-300">
-                                        <p>Sync Results:</p>
-                                        <ul className="list-disc list-inside mt-1">
-                                            <li>Invoices: {syncResults.invoices}</li>
-                                            <li>Customers: {syncResults.customers}</li>
-                                            <li>Products: {syncResults.products}</li>
-                                        </ul>
+                                    <div className={`p-2 rounded-md text-sm ${syncResults.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                        {syncResults.success
+                                            ? `Sync successful: ${syncResults.invoices} invoices, ${syncResults.customers} customers, ${syncResults.products} products.`
+                                            : 'Sync failed. Check console for details.'}
                                     </div>
                                 )}
                             </div>
@@ -402,9 +397,9 @@ export default function HomePage() {
                                     onClick={handleSyncFiles}
                                     variant="secondary"
                                     className="bg-blue-100 hover:bg-blue-200 text-blue-900 relative w-full"
-                                    disabled={isSyncing || !isBackupEnabled || isDriveLoading || showConnectionProcess}
+                                    disabled={syncProgress != null || !isDriveAuthenticated || !isBackupEnabled || showConnectionProcess}
                                 >
-                                    {isSyncing ? (
+                                    {syncProgress != null ? (
                                         <>
                                             <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
                                             <span className="animate-pulse">Syncing... ({syncProgress ? `${syncProgress.current} / ${syncProgress.total}` : 'Starting...'})</span>
@@ -416,7 +411,7 @@ export default function HomePage() {
                                         </>
                                     )}
                                 </Button>
-                                {isSyncing && syncProgress && (
+                                {syncProgress != null && (
                                     <div className="mt-2">
                                         <Progress 
                                             value={syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0} 
@@ -434,14 +429,11 @@ export default function HomePage() {
                                 }}
                                 variant="outline"
                                 size="sm"
-                                disabled={isDriveLoading || showConnectionProcess}
-                                className="transition-all duration-200"
+                                disabled={showConnectionProcess || !isDriveAuthenticated}
+                                className="border-destructive text-destructive hover:bg-destructive/10"
                             >
-                                {isDriveLoading || showConnectionProcess ? (
-                                    <RefreshCw className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    "Disconnect"
-                                )}
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Disconnect
                             </Button>
                         </CardFooter>
                     ) : null}
