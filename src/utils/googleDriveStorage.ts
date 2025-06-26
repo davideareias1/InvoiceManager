@@ -239,19 +239,10 @@ export function loadGoogleApiScript(): Promise<void> {
         script.async = true;
         script.defer = true;
         script.onload = () => {
-            gapi.load('client', async () => {
-                try {
-                    await gapi.client.init({
-                        apiKey: API_KEY,
-                        discoveryDocs: [DISCOVERY_DOC],
-                    });
-                    console.log('Google API client initialized');
-                    gapiInited = true;
-                    resolve();
-                } catch (error) {
-                    console.error('Error initializing Google API client:', error);
-                    reject(error);
-                }
+            gapi.load('client', () => {
+                console.log('Google API client script loaded');
+                gapiInited = true;
+                resolve();
             });
         };
         script.onerror = (error) => {

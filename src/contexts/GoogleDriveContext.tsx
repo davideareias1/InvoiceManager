@@ -329,7 +329,7 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         }
     }, [isSupported, isAuthenticated]);
 
-    const contextValue: GoogleDriveContextType = {
+    const contextValue: GoogleDriveContextType = React.useMemo(() => ({
         isSupported,
         isInitialized,
         isLoading,
@@ -345,7 +345,22 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         syncAllFiles,
         connectionStatusMessage,
         syncProgress
-    };
+    }), [
+        isSupported,
+        isInitialized,
+        isLoading,
+        isAuthenticated,
+        isBackupEnabled,
+        requestPermission,
+        signOut,
+        saveInvoice,
+        deleteInvoice,
+        saveCustomer,
+        saveProduct,
+        syncAllFiles,
+        connectionStatusMessage,
+        syncProgress
+    ]);
 
     return (
         <GoogleDriveContext.Provider value={contextValue}>
