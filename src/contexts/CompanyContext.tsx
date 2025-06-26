@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { CompanyInfo } from '../interfaces';
 import { loadCompanyInfo, saveCompanyInfo } from '../utils/companyUtils';
 import { useFileSystem } from './FileSystemContext';
@@ -59,7 +59,7 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
 
-    const loadAndSetCompanyInfo = async () => {
+    const loadAndSetCompanyInfo = useCallback(async () => {
         if (!isFileSystemInitialized || !hasPermission) return;
         try {
             const savedInfo = await loadCompanyInfo();
@@ -86,7 +86,7 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
         } catch (error) {
             console.error('Error explicitly loading company info:', error);
         }
-    };
+    }, [isFileSystemInitialized, hasPermission]);
 
     // Load company info from file on mount, but only after file system is ready
     useEffect(() => {
@@ -97,8 +97,7 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
             setIsInitialized(true);
         };
         fetchCompanyInfo();
-    }, [isInitialized, isFileSystemInitialized, hasPermission]);
-
+    }, [isInitialized, isFileSystemInitialized, hasPermission, loadAndSetCompanyInfo]);
 
     // Update company info and save to file
     const updateCompanyInfo = async (info: Partial<CompanyInfo>) => {
