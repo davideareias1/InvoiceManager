@@ -111,7 +111,7 @@ export default function CreateInvoicePage() {
                     
                     <div className="p-6">
                         {/* The InvoiceForm component will be rendered here */}
-                        <InvoiceForm formId="invoice-form" />
+                        <InvoiceForm />
                     </div>
                     
                     <div className="bg-gray-50 border-t border-gray-100 p-5">
