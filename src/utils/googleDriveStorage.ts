@@ -14,14 +14,14 @@ const APP_FOLDER_NAME = 'InvoiceManager';
 
 // Use environment variables for API credentials with proper fallbacks and warning
 const CLIENT_ID = process.env.NEXT_PUBLIC_CLIENT_ID || '';
-const API_KEY = process.env.GOOGLE_DRIVE_API_KEY || '';
+const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY || '';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
 // Use the more limited scope that should be sufficient for app folder access
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
 // Show warning if credentials are missing
 if (!CLIENT_ID || !API_KEY) {
-    console.warn('Google Drive API credentials missing. Please add NEXT_PUBLIC_CLIENT_ID and GOOGLE_DRIVE_API_KEY to your .env.local file.');
+    console.warn('Google Drive API credentials missing. Please add NEXT_PUBLIC_CLIENT_ID and NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY to your .env.local file.');
 }
 
 // Global variables
