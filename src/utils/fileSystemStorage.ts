@@ -15,7 +15,7 @@ declare global {
     interface FileSystemDirectoryHandle {
         getFileHandle(name: string, options?: { create?: boolean }): Promise<FileSystemFileHandle>;
         getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<FileSystemDirectoryHandle>;
-        values(): AsyncIterable<FileSystemHandle>;
+        values(): AsyncIterableIterator<FileSystemHandle>;
     }
 
     interface FileSystemFileHandle {
@@ -49,6 +49,14 @@ async function getVerifiedDirectoryHandle(): Promise<FileSystemDirectoryHandle> 
         throw new Error("Directory handle not available. Please select a directory first.");
     }
 
+    // First, check if the handle points to a directory that still exists.
+    if (!(await isHandleValid(directoryHandle))) {
+        // Handle is stale. Clear it out and throw.
+        directoryHandle = null;
+        await clearSavedDirectoryHandle();
+        throw new Error("The previously selected directory could not be found. Please select it again.");
+    }
+
     const options = { mode: 'readwrite' as const };
 
     // Check if permission is already granted
@@ -62,6 +70,28 @@ async function getVerifiedDirectoryHandle(): Promise<FileSystemDirectoryHandle> 
     }
 
     throw new Error("File system permission denied.");
+}
+
+/**
+ * Checks if the directory handle is still valid by attempting a lightweight operation.
+ * @param handle The directory handle to validate.
+ * @returns True if the handle is valid, false otherwise.
+ */
+async function isHandleValid(handle: FileSystemDirectoryHandle): Promise<boolean> {
+    try {
+        // A lightweight check to see if the handle is still valid.
+        // If the directory was deleted, this will throw a NotFoundError.
+        await handle.values().next();
+        return true;
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'NotFoundError') {
+            console.warn("Directory handle is no longer valid (directory likely moved or deleted).");
+            return false;
+        }
+        // For other errors, we can be conservative and assume it's not valid.
+        console.error("Unexpected error validating directory handle:", error);
+        return false;
+    }
 }
 
 /**
@@ -299,19 +329,28 @@ export async function initializeFileSystem(): Promise<boolean> {
     try {
         const savedHandle = await getSavedDirectoryHandle();
         if (savedHandle) {
-            // Verify permission is still granted
-            if (await verifyPermission(savedHandle)) {
-                directoryHandle = savedHandle;
+            // Verify the handle is actually valid (points to an existing directory)
+            if (await isHandleValid(savedHandle)) {
+                // Verify permission is still granted
+                if (await verifyPermission(savedHandle)) {
+                    directoryHandle = savedHandle;
 
-                // Initialize directory structure
-                await initializeDirectoryStructure();
+                    // Initialize directory structure
+                    await initializeDirectoryStructure();
 
-                return true;
+                    return true;
+                }
+            } else {
+                // Handle is invalid, clear it from storage
+                await clearSavedDirectoryHandle();
             }
         }
         return false;
     } catch (error) {
         console.error('Error initializing file system:', error);
+        // Clear the handle if initialization fails for any reason
+        await clearSavedDirectoryHandle();
+        directoryHandle = null;
         return false;
     }
 }
@@ -714,5 +753,26 @@ export async function getDirectoryHandle(directoryName: string, baseHandle?: Fil
     } catch (error) {
         console.error(`Error getting directory handle for ${directoryName}:`, error);
         throw error;
+    }
+}
+
+/**
+ * Clears the saved directory handle from IndexedDB.
+ */
+async function clearSavedDirectoryHandle(): Promise<void> {
+    if (typeof window !== 'undefined') {
+        try {
+            const db = await openDatabase();
+            const tx = db.transaction(['handles'], 'readwrite');
+            const store = tx.objectStore('handles');
+            await store.delete(DIRECTORY_HANDLE_KEY);
+            await new Promise((resolve, reject) => {
+                tx.oncomplete = () => resolve(undefined);
+                tx.onerror = () => reject(tx.error);
+            });
+            db.close();
+        } catch (error) {
+            console.error('Failed to clear saved directory handle:', error);
+        }
     }
 } 
