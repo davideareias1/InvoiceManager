@@ -3,6 +3,7 @@
 import { CustomerData } from '../interfaces/index';
 import { v4 as uuidv4 } from 'uuid';
 import { saveCustomerToFile, loadCustomersFromFiles, deleteCustomerFile } from './fileSystemStorage';
+import { saveCustomerToGoogleDrive } from './googleDriveStorage';
 
 // Structure for a saved customer with ID
 export interface SavedCustomer extends CustomerData {

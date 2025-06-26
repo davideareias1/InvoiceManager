@@ -19,17 +19,23 @@ export interface InvoiceItem {
 }
 
 export interface CustomerData {
+    id: string;
     name: string;
     address: string;
     city: string;
     number?: string;
+    lastModified: string;
+    isDeleted?: boolean;
 }
 
 export interface ProductData {
+    id: string;
     name: string;
     price: number;
     unit?: string;
     description?: string;
+    lastModified: string;
+    isDeleted?: boolean;
 }
 
 export interface Invoice {
@@ -58,6 +64,8 @@ export interface Invoice {
     payment_status?: PaymentStatus;
     created_at?: Date;
     updated_at?: Date;
+    lastModified: string;
+    isDeleted?: boolean;
 }
 
 export interface CompanyInfo {
