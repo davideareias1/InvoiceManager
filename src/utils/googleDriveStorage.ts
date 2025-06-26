@@ -223,7 +223,18 @@ async function getDriveFiles<T extends { id: string }>(parentFolderId: string): 
 async function uploadFile(folderId: string, item: { id: string } & any, existingFileId?: string): Promise<void> {
     const content = JSON.stringify(item, null, 2);
     const blob = new Blob([content], { type: 'application/json' });
-    const filename = `${item.id}.json`;
+
+    // Determine a user-friendly filename
+    let friendlyName = item.id; // Default to ID
+    if (item.invoice_number) { // It's an invoice
+        friendlyName = item.invoice_number;
+    } else if (item.name) { // It's a customer or product
+        // Sanitize the name to be a valid filename
+        friendlyName = item.name.replace(/[\/\\?%*:|"<>]/g, '-');
+    }
+    // For company info, the id is 'company_info', which is descriptive enough.
+    
+    const filename = `${friendlyName}.json`;
 
     const metadata = { name: filename, mimeType: 'application/json', ...(existingFileId ? {} : { parents: [folderId] }) };
     
