@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { CompanyInfo } from '../interfaces';
 import { loadCompanyInfo, saveCompanyInfo } from '../utils/companyUtils';
+import { useFileSystem } from './FileSystemContext';
 
 // Default company info
 const DEFAULT_COMPANY_INFO: CompanyInfo = {
@@ -52,14 +53,16 @@ interface CompanyProviderProps {
 }
 
 export function CompanyProvider({ children }: CompanyProviderProps) {
+    const { isInitialized: isFileSystemInitialized, hasPermission } = useFileSystem();
     const [companyInfo, setCompanyInfo] = useState<CompanyInfo>(DEFAULT_COMPANY_INFO);
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
 
-    // Load company info from file on mount
+    // Load company info from file on mount, but only after file system is ready
     useEffect(() => {
         const fetchCompanyInfo = async () => {
-            if (isInitialized) return;
+            if (isInitialized || !isFileSystemInitialized || !hasPermission) return;
+            
             try {
                 const savedInfo = await loadCompanyInfo();
                 if (savedInfo) {
@@ -95,7 +98,7 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
             }
         };
         fetchCompanyInfo();
-    }, [isInitialized]);
+    }, [isInitialized, isFileSystemInitialized, hasPermission]);
 
 
     // Update company info and save to file

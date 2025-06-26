@@ -55,14 +55,14 @@ export async function isGoogleDriveAuthenticated(): Promise<boolean> {
 }
 
 async function verifyAndRefreshToken(): Promise<boolean> {
-    const token = gapi.client.getToken();
+        const token = gapi.client.getToken();
     if (!token || !token.access_token) return false;
 
     if (!gapi?.client?.drive) {
         console.warn('Drive API client not loaded yet, skipping token validation.');
         return true; // Assume valid for now to prevent race conditions
     }
-
+    
     try {
         await gapi.client.drive.files.list({ pageSize: 1, fields: 'files(id)' });
         return true;
@@ -81,9 +81,9 @@ export function loadGoogleApiScript(): Promise<void> {
         script.async = true;
         script.defer = true;
         script.onload = () => gapi.load('client', () => {
-            gapiInited = true;
-            resolve();
-        });
+                gapiInited = true;
+                resolve();
+            });
         script.onerror = reject;
         document.body.appendChild(script);
     });
@@ -97,8 +97,8 @@ export function loadGoogleIdentityScript(): Promise<void> {
         script.async = true;
         script.defer = true;
         script.onload = () => {
-            gisInited = true;
-            resolve();
+                    gisInited = true;
+                    resolve();
         };
         script.onerror = reject;
         document.body.appendChild(script);
@@ -106,10 +106,10 @@ export function loadGoogleIdentityScript(): Promise<void> {
 }
 
 async function handleAuthCallback(resp: any) {
-    if (resp.error) {
+                if (resp.error) {
         console.error('Auth error:', resp);
-        return;
-    }
+                    return;
+                }
     localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, JSON.stringify(gapi.client.getToken()));
     await initializeDirectoryStructure();
     // Start sync after successful auth
@@ -136,7 +136,7 @@ export async function initializeGoogleDriveApi(): Promise<boolean> {
     if (savedToken) {
         gapi.client.setToken(JSON.parse(savedToken));
         if (await verifyAndRefreshToken()) {
-            await initializeDirectoryStructure();
+                    await initializeDirectoryStructure();
             // Start first sync
             synchronizeData().catch(e => console.error("Initial sync failed", e));
         }
@@ -145,17 +145,17 @@ export async function initializeGoogleDriveApi(): Promise<boolean> {
 }
 
 export function requestGoogleDriveAuthorization(): void {
-    if (gapi.client.getToken() === null) {
-        tokenClient.requestAccessToken({ prompt: 'consent' });
+            if (gapi.client.getToken() === null) {
+                tokenClient.requestAccessToken({ prompt: 'consent' });
     }
 }
 
 export function signOutGoogleDrive(): void {
-    const token = gapi.client.getToken();
-    if (token !== null) {
-        google.accounts.oauth2.revoke(token.access_token);
-        gapi.client.setToken('');
-        localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
+        const token = gapi.client.getToken();
+        if (token !== null) {
+            google.accounts.oauth2.revoke(token.access_token);
+            gapi.client.setToken('');
+            localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
         folderIds = {};
     }
 }
@@ -178,10 +178,10 @@ async function findOrCreateFolder(name: string, parentId?: string): Promise<stri
 }
 
 async function initializeDirectoryStructure(): Promise<void> {
-    const appFolderId = await findOrCreateFolder(APP_FOLDER_NAME);
-    folderIds[APP_FOLDER_NAME] = appFolderId;
-    folderIds[CUSTOMERS_DIRECTORY] = await findOrCreateFolder(CUSTOMERS_DIRECTORY, appFolderId);
-    folderIds[PRODUCTS_DIRECTORY] = await findOrCreateFolder(PRODUCTS_DIRECTORY, appFolderId);
+        const appFolderId = await findOrCreateFolder(APP_FOLDER_NAME);
+        folderIds[APP_FOLDER_NAME] = appFolderId;
+        folderIds[CUSTOMERS_DIRECTORY] = await findOrCreateFolder(CUSTOMERS_DIRECTORY, appFolderId);
+        folderIds[PRODUCTS_DIRECTORY] = await findOrCreateFolder(PRODUCTS_DIRECTORY, appFolderId);
     folderIds[INVOICES_DIRECTORY] = await findOrCreateFolder(INVOICES_DIRECTORY, appFolderId);
 }
 
@@ -454,8 +454,8 @@ async function findFileById(itemId: string, folderId: string): Promise<{ fileId:
     const response = await gapi.client.drive.files.list({
         q: `name='${filename}' and '${folderId}' in parents and trashed=false`,
         fields: 'files(id, modifiedTime)',
-        spaces: 'drive'
-    });
+            spaces: 'drive'
+        });
     const file = response.result.files?.[0];
     return file ? { fileId: file.id!, modifiedTime: file.modifiedTime! } : null;
 }
