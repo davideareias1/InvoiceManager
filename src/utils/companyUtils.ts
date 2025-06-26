@@ -2,7 +2,6 @@
 
 import { CompanyInfo } from '../interfaces';
 import { loadCompanyInfoFromFile, saveCompanyInfoToFile } from './fileSystemStorage';
-import { synchronizeData } from './googleDriveStorage';
 
 let cachedCompanyInfo: CompanyInfo | null = null;
 
@@ -25,7 +24,7 @@ export async function loadCompanyInfo(): Promise<CompanyInfo | null> {
 }
 
 /**
- * Save company information to the local file and trigger a sync with Google Drive.
+ * Save company information to the local file. The manual backup process will handle uploading to Drive.
  * @param info The company information object.
  */
 export async function saveCompanyInfo(info: Partial<CompanyInfo>): Promise<CompanyInfo> {
@@ -40,9 +39,8 @@ export async function saveCompanyInfo(info: Partial<CompanyInfo>): Promise<Compa
 
     cachedCompanyInfo = updatedInfo;
 
-    // Save locally and then trigger a sync.
+    // Save locally. The manual backup process will handle uploading to Drive.
     await saveCompanyInfoToFile(updatedInfo);
-    await synchronizeData(); // This will handle the upload to Drive.
 
     return updatedInfo;
 } 

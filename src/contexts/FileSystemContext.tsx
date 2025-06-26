@@ -70,6 +70,35 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
         isBackupEnabled: false
     });
 
+    // Share directory handle with other utilities
+    const shareDirectoryHandle = React.useCallback(async (): Promise<void> => {
+        try {
+            // Get the current directory handle from the storage API
+            const currentHandle = await getSavedDirectoryHandle();
+            if (currentHandle) {
+                // Share it with all utilities
+                setFileSystemDirectoryHandle(currentHandle);
+                setCustomerDirectoryHandle(currentHandle);
+                setProductDirectoryHandle(currentHandle);
+            }
+        } catch (error) {
+            console.error("Error sharing directory handle:", error);
+        }
+    }, []);
+
+    // Internal function to refresh invoices
+    const refreshInvoicesInternal = React.useCallback(async (): Promise<void> => {
+        setIsLoading(true);
+        try {
+            const loadedInvoices = await loadInvoicesFromFiles();
+            setInvoices(loadedInvoices);
+        } catch (error) {
+            console.error("Error loading invoices:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
     // Initialize on client side only
     useEffect(() => {
         // Check if File System Access API is supported
@@ -101,7 +130,7 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
         } else {
             setIsInitialized(true);
         }
-    }, []);
+    }, [shareDirectoryHandle, refreshInvoicesInternal]);
 
     // Request directory permission
     const requestPermission = async (): Promise<boolean> => {
@@ -116,46 +145,6 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
         }
 
         return granted;
-    };
-
-    // Share directory handle with other utilities
-    const shareDirectoryHandle = async (): Promise<void> => {
-        try {
-            // Get the current directory handle from the storage API
-            const currentHandle = await getSavedDirectoryHandle();
-            if (currentHandle) {
-                // Share it with all utilities
-                setFileSystemDirectoryHandle(currentHandle);
-                setCustomerDirectoryHandle(currentHandle);
-                setProductDirectoryHandle(currentHandle);
-
-                // Load initial data
-                try {
-                    await Promise.all([
-                        refreshInvoicesInternal(),
-                        // The following functions don't need to be awaited as they
-                        // will load data internally when the directory handle is set
-                    ]);
-                } catch (error) {
-                    console.error("Error loading initial data:", error);
-                }
-            }
-        } catch (error) {
-            console.error("Error sharing directory handle:", error);
-        }
-    };
-
-    // Internal function to refresh invoices
-    const refreshInvoicesInternal = async (): Promise<void> => {
-        setIsLoading(true);
-        try {
-            const loadedInvoices = await loadInvoicesFromFiles();
-            setInvoices(loadedInvoices);
-        } catch (error) {
-            console.error("Error loading invoices:", error);
-        } finally {
-            setIsLoading(false);
-        }
     };
 
     // Public function to refresh invoices
@@ -295,7 +284,7 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
     // Make registerGoogleDriveBackup available to child contexts
     const childContextValue = { registerGoogleDriveBackup };
 
-    const value = {
+    const value: FileSystemContextType = {
         isSupported,
         isInitialized,
         isSaving,

@@ -72,7 +72,7 @@ export default function HomePage() {
         setIsBackupEnabled,
         requestPermission: requestDrivePermission,
         signOut: signOutDrive,
-        synchronize,
+        backup,
         syncProgress
     } = useGoogleDrive();
 
@@ -170,18 +170,18 @@ export default function HomePage() {
         return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
     };
 
-    const handleSyncFiles = async () => {
+    const handleBackupFiles = async () => {
         if (!isDriveAuthenticated || !isBackupEnabled || syncProgress != null) return;
         try {
-            await synchronize();
-            showSuccess(`Synchronization with Google Drive complete.`);
+            await backup();
+            showSuccess(`Backup to Google Drive complete.`);
             // After sync, we might want to reload local data to reflect changes
             if (hasPermission) {
                 await loadInvoices();
             }
         } catch (error) {
-            console.error('Error syncing files:', error);
-            showError('Error syncing files.');
+            console.error('Error backing up files:', error);
+            showError('Error backing up files.');
         }
     };
 
@@ -382,14 +382,14 @@ export default function HomePage() {
                                          <Button
                                             size="sm"
                                             variant="outline"
-                                            onClick={handleSyncFiles}
+                                            onClick={handleBackupFiles}
                                             className="w-full relative"
                                             disabled={syncProgress != null}
                                         >
                                             {syncProgress != null ? (
                                                 <>
                                                     <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                                                    Syncing ({syncProgress.current}/{syncProgress.total})
+                                                    Backing up ({syncProgress.current}/{syncProgress.total})
                                                     <Progress
                                                         value={syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0}
                                                         className="absolute bottom-0 left-0 right-0 h-1 rounded-none"
@@ -397,8 +397,8 @@ export default function HomePage() {
                                                 </>
                                             ) : (
                                                 <>
-                                                    <RefreshCw className="mr-2 h-4 w-4" />
-                                                    Sync Now
+                                                    <Cloud className="mr-2 h-4 w-4" />
+                                                    Backup Now
                                                 </>
                                             )}
                                         </Button>

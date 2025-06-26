@@ -161,7 +161,7 @@ export default function Invoices() {
     };
 
     // Sorting function
-    const sortInvoices = (invoices: Invoice[]): Invoice[] => {
+    const sortInvoices = useCallback((invoices: Invoice[]): Invoice[] => {
         return [...invoices].sort((a, b) => {
             let aValue, bValue;
 
@@ -188,10 +188,10 @@ export default function Invoices() {
                 return aValue < bValue ? 1 : -1;
             }
         });
-    };
+    }, [sortField, sortDirection]);
 
     // Filter function
-    const filterInvoices = (invoices: Invoice[]): Invoice[] => {
+    const filterInvoices = useCallback((invoices: Invoice[]): Invoice[] => {
         return invoices.filter(invoice => {
             // Filter by payment status
             if (!showPaid && invoice.is_paid) return false;
@@ -223,7 +223,7 @@ export default function Invoices() {
 
             return true;
         });
-    };
+    }, [showPaid, showUnpaid, dateFilter]);
 
     // Apply all filters and sorting
     const applyFiltersAndSort = useCallback(() => {
@@ -251,7 +251,7 @@ export default function Invoices() {
 
         // Update total pages
         setTotalPages(Math.max(1, Math.ceil(sorted.length / itemsPerPage)));
-    }, [invoices, searchTerm, itemsPerPage, sortField, sortDirection, showPaid, showUnpaid, dateFilter]);
+    }, [invoices, searchTerm, itemsPerPage, sortInvoices, filterInvoices]);
 
     // Update displayed invoices whenever filtered results or page changes
     useEffect(() => {

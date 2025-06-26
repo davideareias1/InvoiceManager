@@ -10,7 +10,7 @@ import {
     saveInvoiceToGoogleDrive,
     saveCustomerToGoogleDrive,
     saveProductToGoogleDrive,
-    synchronizeData,
+    backupAllDataToDrive,
     getSyncStatus,
 } from '../utils/googleDriveStorage';
 import { Invoice } from '../interfaces';
@@ -30,7 +30,7 @@ interface GoogleDriveContextType {
     deleteInvoice: (invoiceNumber: string) => Promise<boolean>;
     saveCustomer: (customer: any) => Promise<boolean>;
     saveProduct: (product: any) => Promise<boolean>;
-    synchronize: () => Promise<void>;
+    backup: () => Promise<void>;
     connectionStatusMessage: string;
     syncProgress: { current: number, total: number } | null;
 }
@@ -62,18 +62,8 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
     const fileSystemChildContext = useFileSystemChild();
     
     const saveInvoice = useCallback(async (invoice: Invoice): Promise<boolean> => {
-        if (!isSupported || !isAuthenticated || !isBackupEnabled) return false;
-        setIsSyncing(true);
-        try {
-            await saveInvoiceToGoogleDrive(invoice);
-            return true;
-        } catch (e) {
-            console.error("Failed to save invoice to drive", e);
-            return false;
-        } finally {
-            setIsSyncing(false);
-        }
-    }, [isSupported, isAuthenticated, isBackupEnabled]);
+        return true;
+    }, []);
     
     const deleteInvoice = useCallback(async (invoiceNumber: string): Promise<boolean> => {
         // Deletion is handled by the sync engine when an item is marked as deleted.
@@ -83,32 +73,12 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
     }, []);
 
     const saveCustomer = useCallback(async (customer: any): Promise<boolean> => {
-        if (!isSupported || !isAuthenticated || !isBackupEnabled) return false;
-        setIsSyncing(true);
-        try {
-            await saveCustomerToGoogleDrive(customer);
-            return true;
-        } catch (e) {
-            console.error("Failed to save customer to drive", e);
-            return false;
-        } finally {
-            setIsSyncing(false);
-        }
-    }, [isSupported, isAuthenticated, isBackupEnabled]);
+        return true;
+    }, []);
 
     const saveProduct = useCallback(async (product: any): Promise<boolean> => {
-        if (!isSupported || !isAuthenticated || !isBackupEnabled) return false;
-        setIsSyncing(true);
-        try {
-            await saveProductToGoogleDrive(product);
-            return true;
-        } catch (e) {
-            console.error("Failed to save product to drive", e);
-            return false;
-        } finally {
-            setIsSyncing(false);
-        }
-    }, [isSupported, isAuthenticated, isBackupEnabled]);
+        return true;
+    }, []);
 
     useEffect(() => {
         const initialize = async () => {
@@ -192,7 +162,7 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         setIsBackupEnabled(false);
     }, [isSupported, isAuthenticated]);
 
-    const synchronize = useCallback(async (): Promise<void> => {
+    const backup = useCallback(async (): Promise<void> => {
         if (!isSupported || !isAuthenticated) return;
 
         setSyncProgress({ current: 0, total: 0 });
@@ -201,9 +171,9 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         };
 
         try {
-            await synchronizeData(handleProgress);
+            await backupAllDataToDrive(handleProgress);
         } catch (error) {
-            console.error('Error syncing all files to Google Drive:', error);
+            console.error('Error backing up all files to Google Drive:', error);
         } finally {
             setSyncProgress(null);
         }
@@ -223,7 +193,7 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         deleteInvoice,
         saveCustomer,
         saveProduct,
-        synchronize,
+        backup,
         connectionStatusMessage,
         syncProgress
     }), [
@@ -239,7 +209,7 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         deleteInvoice,
         saveCustomer,
         saveProduct,
-        synchronize,
+        backup,
         connectionStatusMessage,
         syncProgress
     ]);

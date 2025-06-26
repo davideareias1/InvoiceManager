@@ -113,7 +113,7 @@ async function handleAuthCallback(resp: any) {
     localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, JSON.stringify(gapi.client.getToken()));
     await initializeDirectoryStructure();
     // Start sync after successful auth
-    synchronizeData().catch(e => console.error("Post-auth sync failed", e));
+    // synchronizeData().catch(e => console.error("Post-auth sync failed", e));
 }
 
 export async function initializeGoogleDriveApi(): Promise<boolean> {
@@ -138,7 +138,7 @@ export async function initializeGoogleDriveApi(): Promise<boolean> {
         if (await verifyAndRefreshToken()) {
                     await initializeDirectoryStructure();
             // Start first sync
-            synchronizeData().catch(e => console.error("Initial sync failed", e));
+            // synchronizeData().catch(e => console.error("Initial sync failed", e));
         }
     }
     return true;
@@ -249,219 +249,125 @@ async function deleteFileFromDrive(fileId: string): Promise<void> {
     await (gapi.client.drive.files as any).delete({ fileId });
 }
 
+async function findFileByName(fileName: string, parentFolderId: string): Promise<{ fileId: string; } | null> {
+    const response = await gapi.client.drive.files.list({
+        q: `name='${fileName}' and '${parentFolderId}' in parents and trashed=false`,
+        fields: 'files(id)',
+        pageSize: 1,
+    });
+    const file = response.result.files?.[0];
+    return file ? { fileId: file.id! } : null;
+}
 
-// --- Synchronization Engine ---
+async function findFileById(itemId: string, folderId: string): Promise<{ fileId: string; } | null> {
+    const filename = `${itemId}.json`;
+    const response = await gapi.client.drive.files.list({
+        q: `name='${filename}' and '${folderId}' in parents and trashed=false`,
+        fields: 'files(id)',
+        spaces: 'drive'
+        });
+    const file = response.result.files?.[0];
+    return file ? { fileId: file.id! } : null;
+}
+
+
+// --- Backup Engine ---
 
 /**
- * Main synchronization function.
- * Compares local and remote data and performs necessary operations.
+ * Main backup function.
+ * Loads all local data and uploads it to Google Drive, overwriting existing files.
  */
-export async function synchronizeData(onProgress?: (progress: { current: number, total: number }) => void): Promise<void> {
-    if (isSyncing || !await isGoogleDriveAuthenticated()) return;
+export async function backupAllDataToDrive(onProgress?: (progress: { current: number, total: number }) => void): Promise<void> {
+    if (isSyncing || !await isGoogleDriveAuthenticated()) {
+        console.log("Backup skipped: already syncing or not authenticated.");
+        return;
+    }
     
     isSyncing = true;
-    console.log("Starting data synchronization...");
+    console.log("Starting data backup to Google Drive...");
+    let progress = { current: 0, total: 0 };
+    const reportProgress = () => {
+        progress.current++;
+        onProgress?.(progress);
+    };
 
     try {
-        await initializeDirectoryStructure(); // Ensure folders exist
+        await initializeDirectoryStructure();
 
-        // Sync customers, products, and invoices
-        await syncDataType('Customers', folderIds[CUSTOMERS_DIRECTORY], loadCustomersFromFiles, saveCustomerToFile, deleteCustomerFile);
-        await syncDataType('Products', folderIds[PRODUCTS_DIRECTORY], loadProductsFromFiles, saveProductToFile, deleteProductFile);
-        await syncInvoices();
+        // 1. Discover all local items to calculate total
+        const companyInfo = await loadCompanyInfoFromFile();
+        const customers = await loadCustomersFromFiles();
+        const products = await loadProductsFromFiles();
+        const invoices = await loadInvoicesFromFiles();
+        
+        progress.total = (companyInfo ? 1 : 0) + customers.length + products.length + invoices.length;
+        onProgress?.(progress);
 
-        // Sync company info
-        await syncCompanyInfo();
+        const uploadPromises: Promise<void>[] = [];
 
-        console.log("Synchronization finished successfully.");
+        // 2. Upload Company Info
+        if (companyInfo) {
+            const uploadCompanyInfo = async () => {
+                const existing = await findFileByName(COMPANY_INFO_FILENAME, folderIds[APP_FOLDER_NAME]);
+                await uploadFile(folderIds[APP_FOLDER_NAME], { ...companyInfo, id: 'company_info' }, existing?.fileId);
+                reportProgress();
+            };
+            uploadPromises.push(uploadCompanyInfo());
+        }
+
+        // 3. Upload Customers
+        customers.forEach(customer => {
+             if (customer.isDeleted) return; // Skip uploading deleted items
+            const upload = async () => {
+                const existing = await findFileById(customer.id, folderIds[CUSTOMERS_DIRECTORY]);
+                await uploadFile(folderIds[CUSTOMERS_DIRECTORY], customer, existing?.fileId);
+                reportProgress();
+            };
+            uploadPromises.push(upload());
+        });
+
+        // 4. Upload Products
+        products.forEach(product => {
+            if (product.isDeleted) return;
+            const upload = async () => {
+                const existing = await findFileById(product.id, folderIds[PRODUCTS_DIRECTORY]);
+                await uploadFile(folderIds[PRODUCTS_DIRECTORY], product, existing?.fileId);
+                reportProgress();
+            };
+            uploadPromises.push(upload());
+        });
+
+        // 5. Upload Invoices
+        for (const invoice of invoices) {
+            if (invoice.isDeleted) continue;
+            const upload = async () => {
+                const year = new Date(invoice.invoice_date).getFullYear().toString();
+                const yearFolderId = await findOrCreateFolder(year, folderIds[INVOICES_DIRECTORY]);
+                const existing = await findFileById(invoice.id, yearFolderId);
+                await uploadFile(yearFolderId, invoice, existing?.fileId);
+                reportProgress();
+            };
+            uploadPromises.push(upload());
+        }
+        
+        await Promise.all(uploadPromises);
+
+        console.log("Backup finished successfully.");
     } catch (error) {
-        console.error("Synchronization failed:", error);
+        console.error("Backup failed:", error);
+        throw error; // Re-throw to be caught in the UI
     } finally {
         isSyncing = false;
     }
 }
 
-async function syncInvoices() {
-    // For invoices, we need to handle yearly folders
-    const localInvoices = await loadInvoicesFromFiles();
-    const invoicesByYear = localInvoices.reduce((acc, inv) => {
-        const year = new Date(inv.invoice_date).getFullYear().toString();
-        if (!acc[year]) acc[year] = [];
-        acc[year].push(inv);
-        return acc;
-    }, {} as Record<string, Invoice[]>);
-    
-    const driveYears = new Set<string>();
-    const driveInvoicesResponse = await gapi.client.drive.files.list({
-            q: `mimeType='application/vnd.google-apps.folder' and '${folderIds[INVOICES_DIRECTORY]}' in parents and trashed=false`,
-            fields: 'files(name)',
-    });
-    driveInvoicesResponse.result.files?.forEach(f => f.name && driveYears.add(f.name));
-
-    const allYears = new Set([...Array.from(Object.keys(invoicesByYear)), ...Array.from(driveYears)]);
-
-    for (const year of allYears) {
-        const yearFolderId = await findOrCreateFolder(year, folderIds[INVOICES_DIRECTORY]);
-        await syncDataType<Invoice>(
-            `Invoices (${year})`,
-            yearFolderId,
-            () => Promise.resolve(invoicesByYear[year] || []), // Provide local invoices for the year
-            saveInvoiceToFile,
-            deleteInvoiceFile
-        );
-    }
-}
-
-async function syncCompanyInfo() {
-    const appFolderId = folderIds[APP_FOLDER_NAME];
-    if (!appFolderId) {
-        console.error("App folder not found, cannot sync company info.");
-        return;
-    }
-
-    // 1. Get local and remote company info
-    const localInfoPromise = loadCompanyInfoFromFile();
-    const remoteInfoPromise = getDriveFileByName<CompanyInfo>(COMPANY_INFO_FILENAME, appFolderId);
-    const [localInfo, remoteInfo] = await Promise.all([localInfoPromise, remoteInfoPromise]);
-
-    // 2. Compare and sync
-    if (localInfo && remoteInfo) {
-        const localDate = new Date(localInfo.lastModified).getTime();
-        const remoteDate = new Date(remoteInfo.modifiedTime).getTime();
-        
-        if (Math.abs(localDate - remoteDate) < 2000) return; // In sync
-
-        if (localDate > remoteDate) {
-            console.log("[Company Info] Uploading changes.");
-            await uploadFile(appFolderId, localInfo, remoteInfo.fileId);
-        } else {
-            console.log("[Company Info] Downloading changes.");
-            await saveCompanyInfoToFile(remoteInfo.data);
-        }
-
-    } else if (localInfo && !remoteInfo) {
-        console.log("[Company Info] Uploading new file.");
-        await uploadFile(appFolderId, localInfo);
-
-    } else if (!localInfo && remoteInfo) {
-        console.log("[Company Info] Downloading new file.");
-        await saveCompanyInfoToFile(remoteInfo.data);
-    }
-}
-
-async function getDriveFileByName<T>(fileName: string, parentFolderId: string): Promise<{ fileId: string; modifiedTime: string; data: T } | null> {
-    const response = await gapi.client.drive.files.list({
-        q: `name='${fileName}' and '${parentFolderId}' in parents and trashed=false`,
-        fields: 'files(id, name, modifiedTime)',
-        pageSize: 1,
-    });
-
-    if (!response.result.files || response.result.files.length === 0) {
-        return null;
-    }
-
-    const file = response.result.files[0];
-    try {
-        const content = await gapi.client.drive.files.get({ fileId: file.id!, alt: 'media' });
-        const data = content.result as T;
-        return { fileId: file.id!, modifiedTime: file.modifiedTime!, data };
-    } catch (e) {
-        console.error(`Failed to read or parse file ${file.name}`, e);
-        return null;
-    }
-}
-
-async function syncDataType<T extends { id: string; lastModified: string; isDeleted?: boolean }>(
-    typeName: string,
-    folderId: string,
-    localLoader: () => Promise<T[]>,
-    localSaver: (item: T) => Promise<any>,
-    localDeleter: (id: string) => Promise<any>
-) {
-    console.log(`Syncing ${typeName}...`);
-
-    // 1. Fetch both local and remote data
-    const localItemsPromise = localLoader();
-    const driveFilesPromise = getDriveFiles<T>(folderId);
-    const [localItems, driveFiles] = await Promise.all([localItemsPromise, driveFilesPromise]);
-    
-    const localMap = new Map(localItems.map(item => [item.id, item]));
-    const allIds = new Set([...Array.from(localMap.keys()), ...Array.from(driveFiles.keys())]);
-
-    // 2. Iterate and resolve conflicts
-    for (const id of allIds) {
-        const local = localMap.get(id);
-        const drive = driveFiles.get(id);
-
-        if (local && drive) {
-            // Exists in both places
-            const localDate = new Date(local.lastModified).getTime();
-            const driveDate = new Date(drive.modifiedTime).getTime();
-
-            if (Math.abs(localDate - driveDate) < 2000) continue; // Timestamps are close enough
-
-            if (local.isDeleted && drive.data.isDeleted) {
-                // Already deleted on both, clean them up
-                await localDeleter(id);
-                await deleteFileFromDrive(drive.fileId);
-                continue;
-            }
-
-            if (local.isDeleted) { // Propagate delete to drive
-                await uploadFile(folderId, local, drive.fileId); 
-                continue;
-            }
-            if(drive.data.isDeleted) { // Propagate delete to local
-                await localSaver(drive.data);
-                continue;
-            }
-
-            if (localDate > driveDate) { // Local is newer
-                console.log(`[${typeName}] Uploading changes for ${id}`);
-                await uploadFile(folderId, local, drive.fileId);
-            } else { // Drive is newer
-                console.log(`[${typeName}] Downloading changes for ${id}`);
-                await localSaver(drive.data);
-            }
-        } else if (local && !drive) {
-            // Exists locally only
-            if (local.isDeleted) {
-                console.log(`[${typeName}] Deleting local-only deleted item ${id}`);
-                await localDeleter(id); // Clean up soft-deleted local file
-            } else {
-                console.log(`[${typeName}] Uploading new item ${id}`);
-                await uploadFile(folderId, local);
-            }
-        } else if (!local && drive) {
-            // Exists on Drive only
-            if (drive.data.isDeleted) {
-                console.log(`[${typeName}] Deleting Drive-only deleted item ${drive.fileId}`);
-                await deleteFileFromDrive(drive.fileId);
-            } else {
-                console.log(`[${typeName}] Downloading new item ${drive.data.id}`);
-                await localSaver(drive.data);
-            }
-        }
-    }
-}
 
 // --- Public Helper Functions ---
 
 export const getSyncStatus = () => ({ isSyncing });
 
-async function findFileById(itemId: string, folderId: string): Promise<{ fileId: string; modifiedTime: string; } | null> {
-    const filename = `${itemId}.json`;
-    const response = await gapi.client.drive.files.list({
-        q: `name='${filename}' and '${folderId}' in parents and trashed=false`,
-        fields: 'files(id, modifiedTime)',
-            spaces: 'drive'
-        });
-    const file = response.result.files?.[0];
-    return file ? { fileId: file.id!, modifiedTime: file.modifiedTime! } : null;
-}
-
 // These functions are called from the other utils to explicitly trigger an upload.
-// The sync engine will handle reconcilliation later, but this ensures changes are pushed up immediately.
+// For now we keep them, but the idea is to move to a manual backup model.
 export async function saveCustomerToGoogleDrive(customer: CustomerData): Promise<void> {
     if (!await isGoogleDriveAuthenticated()) return;
     const folderId = folderIds[CUSTOMERS_DIRECTORY];

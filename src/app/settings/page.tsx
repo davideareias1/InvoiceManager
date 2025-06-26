@@ -39,7 +39,7 @@ export default function SettingsPage() {
                 });
             }
         }
-    }, [companyInfo.is_freelancer, companyInfo.full_name]);
+    }, [companyInfo.is_freelancer, companyInfo.full_name, updateCompanyInfo]);
 
     // Convert form field changes to company info updates
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -654,7 +654,7 @@ export default function SettingsPage() {
                                                     <Avatar className="h-32 w-32 shadow-sm border-2 border-white">
                                                         <AvatarImage 
                                                             src={companyInfo.logo_url || ''} 
-                                                            alt="Company Logo" 
+                                                            alt="Company Logo Preview" 
                                                             className="object-contain"
                                                         />
                                                         <AvatarFallback className="text-2xl bg-primary/5 text-primary font-medium">
@@ -730,7 +730,7 @@ export default function SettingsPage() {
                                                 <div className="p-6 bg-white">
                                                     <div className="flex flex-col items-start md:flex-row md:items-center gap-4 p-4 border-b border-gray-100 pb-6">
                                                         <Avatar className="h-16 w-16 bg-gray-100">
-                                                            <AvatarImage src={companyInfo.logo_url || ''} alt="Company Logo" className="object-contain" />
+                                                            <AvatarImage src={companyInfo.logo_url || ''} alt="Company Logo Preview in Header" className="object-contain" />
                                                             <AvatarFallback className="text-xl bg-primary/5 text-primary">
                                                                 {companyInfo.name ? companyInfo.name.charAt(0).toUpperCase() : 'C'}
                                                             </AvatarFallback>
