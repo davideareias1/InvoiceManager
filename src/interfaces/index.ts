@@ -89,6 +89,7 @@ export interface CompanyInfo {
     default_tax_rate: number;
     is_freelancer?: boolean;
     full_name?: string;
+    lastModified: string;
 }
 
 export enum InvoiceStatus {

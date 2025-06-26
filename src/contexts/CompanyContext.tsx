@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { CompanyInfo } from '../interfaces';
+import { loadCompanyInfo, saveCompanyInfo } from '../utils/companyUtils';
 
 // Default company info
 const DEFAULT_COMPANY_INFO: CompanyInfo = {
@@ -24,11 +25,9 @@ const DEFAULT_COMPANY_INFO: CompanyInfo = {
     is_vat_enabled: true,  // VAT is enabled by default
     default_tax_rate: 19,   // Default to standard German VAT rate
     is_freelancer: false,  // Default to company mode
-    full_name: ''          // Empty by default
+    full_name: '',         // Empty by default
+    lastModified: new Date().toISOString(),
 };
-
-// Local storage key
-const COMPANY_INFO_STORAGE_KEY = 'invoice-company-info';
 
 interface CompanyContextType {
     companyInfo: CompanyInfo;
@@ -57,21 +56,23 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
 
-    // Load company info from localStorage on mount
+    // Load company info from file on mount
     useEffect(() => {
-        if (typeof window !== 'undefined') {
+        const fetchCompanyInfo = async () => {
+            if (isInitialized) return;
             try {
-                const savedInfo = localStorage.getItem(COMPANY_INFO_STORAGE_KEY);
+                const savedInfo = await loadCompanyInfo();
                 if (savedInfo) {
-                    const parsedInfo = JSON.parse(savedInfo) as CompanyInfo;
-                    setCompanyInfo(parsedInfo);
+                    setCompanyInfo(savedInfo);
 
                     // If there's a logo URL and it's a data URL, try to convert it to a File
-                    if (parsedInfo.logo_url && parsedInfo.logo_url.startsWith('data:')) {
+                    if (savedInfo.logo_url && savedInfo.logo_url.startsWith('data:')) {
                         try {
                             const dataURLToFile = (dataUrl: string, filename: string): File => {
                                 const arr = dataUrl.split(',');
-                                const mime = arr[0].match(/:(.*?);/)![1];
+                                const mimeMatch = arr[0].match(/:(.*?);/);
+                                if (!mimeMatch) throw new Error("Invalid data URL");
+                                const mime = mimeMatch[1];
                                 const bstr = atob(arr[1]);
                                 let n = bstr.length;
                                 const u8arr = new Uint8Array(n);
@@ -81,36 +82,34 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
                                 return new File([u8arr], filename, { type: mime });
                             };
 
-                            setLogoFile(dataURLToFile(parsedInfo.logo_url, 'company_logo.png'));
+                            setLogoFile(dataURLToFile(savedInfo.logo_url, 'company_logo.png'));
                         } catch (error) {
                             console.error('Error loading logo from data URL:', error);
                         }
                     }
                 }
             } catch (error) {
-                console.error('Error loading company info from localStorage:', error);
+                console.error('Error loading company info:', error);
             } finally {
                 setIsInitialized(true);
             }
-        }
-    }, []);
+        };
+        fetchCompanyInfo();
+    }, [isInitialized]);
 
-    // Save to localStorage whenever companyInfo changes
-    useEffect(() => {
-        if (isInitialized && typeof window !== 'undefined') {
-            localStorage.setItem(COMPANY_INFO_STORAGE_KEY, JSON.stringify(companyInfo));
-        }
-    }, [companyInfo, isInitialized]);
 
-    // Update company info
-    const updateCompanyInfo = (info: Partial<CompanyInfo>) => {
-        setCompanyInfo(prev => ({ ...prev, ...info }));
+    // Update company info and save to file
+    const updateCompanyInfo = async (info: Partial<CompanyInfo>) => {
+        const newInfo = { ...companyInfo, ...info };
+        setCompanyInfo(newInfo);
+        await saveCompanyInfo(newInfo);
     };
 
-    // Reset company info to defaults
-    const resetCompanyInfo = () => {
+    // Reset company info to defaults and save
+    const resetCompanyInfo = async () => {
         setCompanyInfo(DEFAULT_COMPANY_INFO);
         setLogoFile(null);
+        await saveCompanyInfo(DEFAULT_COMPANY_INFO);
     };
 
     // Handle logo file upload

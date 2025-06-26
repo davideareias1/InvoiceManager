@@ -1,6 +1,6 @@
 'use client';
 
-import { Invoice, CustomerData, ProductData } from '../interfaces';
+import { Invoice, CustomerData, ProductData, CompanyInfo } from '../interfaces';
 import {
     loadCustomersFromFiles,
     loadProductsFromFiles,
@@ -11,6 +11,8 @@ import {
     deleteCustomerFile,
     deleteProductFile,
     deleteInvoiceFile,
+    loadCompanyInfoFromFile,
+    saveCompanyInfoToFile,
 } from './fileSystemStorage';
 
 // Constants
@@ -19,6 +21,7 @@ const CUSTOMERS_DIRECTORY = 'customers';
 const PRODUCTS_DIRECTORY = 'products';
 const INVOICES_DIRECTORY = 'invoices';
 const APP_FOLDER_NAME = 'InvoiceManager';
+const COMPANY_INFO_FILENAME = 'company_info.json';
 
 // Use environment variables for API credentials
 const CLIENT_ID = process.env.NEXT_PUBLIC_CLIENT_ID || '';
@@ -262,44 +265,109 @@ export async function synchronizeData(onProgress?: (progress: { current: number,
     try {
         await initializeDirectoryStructure(); // Ensure folders exist
 
-        // Sync all data types
+        // Sync customers, products, and invoices
         await syncDataType('Customers', folderIds[CUSTOMERS_DIRECTORY], loadCustomersFromFiles, saveCustomerToFile, deleteCustomerFile);
         await syncDataType('Products', folderIds[PRODUCTS_DIRECTORY], loadProductsFromFiles, saveProductToFile, deleteProductFile);
-        
-        // For invoices, we need to handle yearly folders
-        const localInvoices = await loadInvoicesFromFiles();
-        const invoicesByYear = localInvoices.reduce((acc, inv) => {
-            const year = new Date(inv.invoice_date).getFullYear().toString();
-            if (!acc[year]) acc[year] = [];
-            acc[year].push(inv);
-            return acc;
-        }, {} as Record<string, Invoice[]>);
-        
-        const driveYears = new Set<string>();
-        const driveInvoicesResponse = await gapi.client.drive.files.list({
-             q: `mimeType='application/vnd.google-apps.folder' and '${folderIds[INVOICES_DIRECTORY]}' in parents and trashed=false`,
-             fields: 'files(name)',
-        });
-        driveInvoicesResponse.result.files?.forEach(f => f.name && driveYears.add(f.name));
+        await syncInvoices();
 
-        const allYears = new Set([...Array.from(Object.keys(invoicesByYear)), ...Array.from(driveYears)]);
-
-        for (const year of allYears) {
-            const yearFolderId = await findOrCreateFolder(year, folderIds[INVOICES_DIRECTORY]);
-            await syncDataType<Invoice>(
-                `Invoices (${year})`,
-                yearFolderId,
-                () => Promise.resolve(invoicesByYear[year] || []), // Provide local invoices for the year
-                saveInvoiceToFile,
-                deleteInvoiceFile
-            );
-        }
+        // Sync company info
+        await syncCompanyInfo();
 
         console.log("Synchronization finished successfully.");
     } catch (error) {
         console.error("Synchronization failed:", error);
     } finally {
         isSyncing = false;
+    }
+}
+
+async function syncInvoices() {
+    // For invoices, we need to handle yearly folders
+    const localInvoices = await loadInvoicesFromFiles();
+    const invoicesByYear = localInvoices.reduce((acc, inv) => {
+        const year = new Date(inv.invoice_date).getFullYear().toString();
+        if (!acc[year]) acc[year] = [];
+        acc[year].push(inv);
+        return acc;
+    }, {} as Record<string, Invoice[]>);
+    
+    const driveYears = new Set<string>();
+    const driveInvoicesResponse = await gapi.client.drive.files.list({
+            q: `mimeType='application/vnd.google-apps.folder' and '${folderIds[INVOICES_DIRECTORY]}' in parents and trashed=false`,
+            fields: 'files(name)',
+    });
+    driveInvoicesResponse.result.files?.forEach(f => f.name && driveYears.add(f.name));
+
+    const allYears = new Set([...Array.from(Object.keys(invoicesByYear)), ...Array.from(driveYears)]);
+
+    for (const year of allYears) {
+        const yearFolderId = await findOrCreateFolder(year, folderIds[INVOICES_DIRECTORY]);
+        await syncDataType<Invoice>(
+            `Invoices (${year})`,
+            yearFolderId,
+            () => Promise.resolve(invoicesByYear[year] || []), // Provide local invoices for the year
+            saveInvoiceToFile,
+            deleteInvoiceFile
+        );
+    }
+}
+
+async function syncCompanyInfo() {
+    const appFolderId = folderIds[APP_FOLDER_NAME];
+    if (!appFolderId) {
+        console.error("App folder not found, cannot sync company info.");
+        return;
+    }
+
+    // 1. Get local and remote company info
+    const localInfoPromise = loadCompanyInfoFromFile();
+    const remoteInfoPromise = getDriveFileByName<CompanyInfo>(COMPANY_INFO_FILENAME, appFolderId);
+    const [localInfo, remoteInfo] = await Promise.all([localInfoPromise, remoteInfoPromise]);
+
+    // 2. Compare and sync
+    if (localInfo && remoteInfo) {
+        const localDate = new Date(localInfo.lastModified).getTime();
+        const remoteDate = new Date(remoteInfo.modifiedTime).getTime();
+        
+        if (Math.abs(localDate - remoteDate) < 2000) return; // In sync
+
+        if (localDate > remoteDate) {
+            console.log("[Company Info] Uploading changes.");
+            await uploadFile(appFolderId, localInfo, remoteInfo.fileId);
+        } else {
+            console.log("[Company Info] Downloading changes.");
+            await saveCompanyInfoToFile(remoteInfo.data);
+        }
+
+    } else if (localInfo && !remoteInfo) {
+        console.log("[Company Info] Uploading new file.");
+        await uploadFile(appFolderId, localInfo);
+
+    } else if (!localInfo && remoteInfo) {
+        console.log("[Company Info] Downloading new file.");
+        await saveCompanyInfoToFile(remoteInfo.data);
+    }
+}
+
+async function getDriveFileByName<T>(fileName: string, parentFolderId: string): Promise<{ fileId: string; modifiedTime: string; data: T } | null> {
+    const response = await gapi.client.drive.files.list({
+        q: `name='${fileName}' and '${parentFolderId}' in parents and trashed=false`,
+        fields: 'files(id, name, modifiedTime)',
+        pageSize: 1,
+    });
+
+    if (!response.result.files || response.result.files.length === 0) {
+        return null;
+    }
+
+    const file = response.result.files[0];
+    try {
+        const content = await gapi.client.drive.files.get({ fileId: file.id!, alt: 'media' });
+        const data = content.result as T;
+        return { fileId: file.id!, modifiedTime: file.modifiedTime!, data };
+    } catch (e) {
+        console.error(`Failed to read or parse file ${file.name}`, e);
+        return null;
     }
 }
 

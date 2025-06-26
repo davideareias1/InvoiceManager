@@ -8,6 +8,7 @@ const FILE_EXTENSION = '.json';
 const CUSTOMERS_DIRECTORY = 'customers';
 const PRODUCTS_DIRECTORY = 'products';
 const INVOICES_DIRECTORY = 'invoices';
+const COMPANY_INFO_FILENAME = 'company_info.json';
 
 // Type definition for FileSystemDirectoryHandle since it might not be recognized in TypeScript
 declare global {
@@ -636,5 +637,45 @@ export async function deleteProductFile(productId: string): Promise<boolean> {
     } catch (error) {
         console.error('Error deleting product:', error);
         return false;
+    }
+}
+
+/**
+ * Save company info to a single JSON file.
+ * @param companyInfo The company information object.
+ */
+export async function saveCompanyInfoToFile(companyInfo: any): Promise<void> {
+    if (!directoryHandle) {
+        console.warn('Directory handle not available, cannot save company info.');
+        return;
+    }
+    try {
+        const fileHandle = await directoryHandle.getFileHandle(COMPANY_INFO_FILENAME, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(companyInfo, null, 2));
+        await writable.close();
+    } catch (error) {
+        console.error('Error saving company info to file:', error);
+        throw error;
+    }
+}
+
+/**
+ * Load company info from a single JSON file.
+ * @returns The company information object, or null if not found.
+ */
+export async function loadCompanyInfoFromFile(): Promise<any | null> {
+    if (!directoryHandle) return null;
+    try {
+        const fileHandle = await directoryHandle.getFileHandle(COMPANY_INFO_FILENAME);
+        const file = await fileHandle.getFile();
+        const contents = await file.text();
+        return JSON.parse(contents);
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'NotFoundError') {
+            return null; // File doesn't exist, which is a valid case.
+        }
+        console.error('Error loading company info from file:', error);
+        return null; // Return null on other errors
     }
 } 
