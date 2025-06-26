@@ -4,8 +4,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ProductData } from '../interfaces';
 import { Search, Plus, Check, X, Save, PackageX, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
-import { SavedProduct, loadProducts, loadProductsSync, saveProduct, searchProducts, deleteProduct } from '../utils/productUtils';
-import { formatAmount } from '../utils/moneyUtils';
+import { loadProducts, loadProductsSync, saveProduct, searchProducts, deleteProduct } from '../utils/productUtils';
+import { formatCurrency } from '../utils/formatters';
 import { showSuccess, showError } from '../utils/notifications';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 
@@ -16,24 +16,20 @@ interface ProductSelectorProps {
 
 export default function ProductSelector({ selectedProduct, onSelectProduct }: ProductSelectorProps) {
     const [searchQuery, setSearchQuery] = useState('');
-    const [products, setProducts] = useState<SavedProduct[]>([]);
+    const [products, setProducts] = useState<ProductData[]>([]);
     const [showResults, setShowResults] = useState(false);
     const [showSaveOption, setShowSaveOption] = useState(false);
     const selectorRef = useRef<HTMLDivElement>(null);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-    const [productToDelete, setProductToDelete] = useState<SavedProduct | null>(null);
+    const [productToDelete, setProductToDelete] = useState<ProductData | null>(null);
 
     // Load products on component mount
     useEffect(() => {
-        // Start with sync loading for immediate response
         setProducts(loadProductsSync());
-
-        // Then load async for complete data
         const loadAsync = async () => {
             const asyncProducts = await loadProducts();
             setProducts(asyncProducts);
         };
-
         loadAsync();
     }, []);
 
@@ -42,19 +38,8 @@ export default function ProductSelector({ selectedProduct, onSelectProduct }: Pr
         if (searchQuery) {
             setProducts(searchProducts(searchQuery));
         } else {
-            // Start with sync loading for immediate response
             const initialProducts = loadProductsSync();
-            // When no search query, show all products but limit to first 5 when dropdown is shown
             setProducts(showResults ? initialProducts.slice(0, 5) : initialProducts);
-
-            // Then load async for complete data
-            const loadAsync = async () => {
-                const asyncProducts = await loadProducts();
-                // When no search query, show all products but limit to first 5 when dropdown is shown
-                setProducts(showResults ? asyncProducts.slice(0, 5) : asyncProducts);
-            };
-
-            loadAsync();
         }
     }, [searchQuery, showResults]);
 
@@ -73,7 +58,7 @@ export default function ProductSelector({ selectedProduct, onSelectProduct }: Pr
     }, []);
 
     // Handle product selection
-    const handleSelectProduct = (product: SavedProduct) => {
+    const handleSelectProduct = (product: ProductData) => {
         onSelectProduct(product);
         setShowResults(false);
         setSearchQuery('');
@@ -99,30 +84,21 @@ export default function ProductSelector({ selectedProduct, onSelectProduct }: Pr
     // Show save option if product info is filled
     useEffect(() => {
         if (selectedProduct.name && selectedProduct.price) {
-            // Check if this product already exists
             const existingProduct = products.find(
-                p =>
-                    p.name === selectedProduct.name &&
-                    p.price === selectedProduct.price
+                p => p.name === selectedProduct.name && p.price === selectedProduct.price
             );
-
-            // Also check for a partial match where just the product name matches
-            // but other fields (price, description, unit) are different
             const partialMatch = products.find(
                 p => p.name === selectedProduct.name &&
                     (p.price !== selectedProduct.price ||
-                        p.description !== selectedProduct.description ||
-                        p.unit !== selectedProduct.unit)
+                     p.description !== selectedProduct.description ||
+                     p.unit !== selectedProduct.unit)
             );
 
             if (existingProduct) {
-                // Exact match - no need to save
                 setShowSaveOption(false);
             } else if (partialMatch) {
-                // Partial match - show update option
                 setShowSaveOption(true);
             } else {
-                // New product - show save option
                 setShowSaveOption(true);
             }
         } else {
@@ -130,26 +106,21 @@ export default function ProductSelector({ selectedProduct, onSelectProduct }: Pr
         }
     }, [selectedProduct, products]);
 
-    // Check if product data is filled
     const hasProductData = Boolean(selectedProduct.name || selectedProduct.price);
 
-    // Get existing product with the same name
     const existingProductWithSameName = selectedProduct.name ?
         products.find(p => p.name === selectedProduct.name) : null;
 
-    // Determine if this is an update to an existing product
     const isProductUpdate = existingProductWithSameName &&
         (existingProductWithSameName.price !== selectedProduct.price ||
-            existingProductWithSameName.description !== selectedProduct.description ||
-            existingProductWithSameName.unit !== selectedProduct.unit);
+         existingProductWithSameName.description !== selectedProduct.description ||
+         existingProductWithSameName.unit !== selectedProduct.unit);
 
-    // New product status message
     const isNewProduct = selectedProduct.name && selectedProduct.price &&
         showSaveOption && !isProductUpdate;
 
-    // Handle product deletion
-    const confirmDelete = (product: SavedProduct, e: React.MouseEvent) => {
-        e.stopPropagation(); // Prevent selection when clicking delete
+    const confirmDelete = (product: ProductData, e: React.MouseEvent) => {
+        e.stopPropagation();
         setProductToDelete(product);
         setIsDeleteDialogOpen(true);
     };
@@ -189,7 +160,6 @@ export default function ProductSelector({ selectedProduct, onSelectProduct }: Pr
                             }}
                             onFocus={() => {
                                 setShowResults(true);
-                                // If no search query, trigger the effect to show first 5 products
                                 if (!searchQuery) {
                                     const initialProducts = loadProductsSync();
                                     setProducts(initialProducts.slice(0, 5));
@@ -216,7 +186,7 @@ export default function ProductSelector({ selectedProduct, onSelectProduct }: Pr
                             variant="outline"
                             size="sm"
                             onClick={() => {
-                                onSelectProduct({ name: '', price: 0, unit: '', description: '' });
+                                onSelectProduct({ id: '', name: '', price: 0, unit: '', description: '', lastModified: '' });
                                 setSearchQuery('');
                             }}
                             className="flex items-center gap-1 h-10"
@@ -277,7 +247,7 @@ export default function ProductSelector({ selectedProduct, onSelectProduct }: Pr
                                         <div className="text-sm text-gray-600">{product.description}</div>
                                     )}
                                     <div className="text-sm font-semibold mt-1">
-                                        €{product.price.toFixed(2)} {product.unit ? `/ ${product.unit}` : ''}
+                                        {formatCurrency(product.price)} {product.unit ? `/ ${product.unit}` : ''}
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1">

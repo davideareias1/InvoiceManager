@@ -11,12 +11,8 @@ import { PlusCircle, Save, Trash } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
     calculateTotal,
-    getIssuerData,
-    getBankDetails,
-    saveIssuerData,
-    saveBankDetails
 } from '../utils/invoiceUtils';
-import { InvoiceItem, CustomerData, IssuerData, BankDetails, Invoice } from '../interfaces';
+import { InvoiceItem, CustomerData, IssuerData, BankDetails, Invoice, ProductData } from '../interfaces';
 import { useFileSystem } from '../contexts/FileSystemContext';
 import { useCompany } from '../contexts/CompanyContext';
 import { v4 as uuidv4 } from 'uuid';
@@ -34,7 +30,7 @@ interface InvoiceFormProps {
 
 export function InvoiceForm({ id, formId, existingInvoice }: InvoiceFormProps) {
     const router = useRouter();
-    const { saveInvoices, hasPermission, loadInvoices } = useFileSystem();
+    const { saveInvoice, hasPermission, loadInvoices } = useFileSystem();
     const { companyInfo } = useCompany();
 
     // Form state
@@ -53,10 +49,12 @@ export function InvoiceForm({ id, formId, existingInvoice }: InvoiceFormProps) {
         city: ''
     });
     const [customer, setCustomer] = useState<CustomerData>({
+        id: '',
         name: '',
         address: '',
         city: '',
-        number: ''
+        number: '',
+        lastModified: ''
     });
     const [items, setItems] = useState<InvoiceItem[]>([
         { name: '', quantity: 1, price: 0 }
@@ -179,10 +177,6 @@ export function InvoiceForm({ id, formId, existingInvoice }: InvoiceFormProps) {
         const loadingToast = showLoading("Saving invoice...");
 
         try {
-            // Save issuer and bank details for future use
-            saveIssuerData(issuer);
-            saveBankDetails(bankDetails);
-
             // Create invoice object
             const invoice: Invoice = {
                 id: existingInvoice?.id || uuidv4(),
@@ -201,43 +195,19 @@ export function InvoiceForm({ id, formId, existingInvoice }: InvoiceFormProps) {
                 items,
                 total,
                 bank_details: bankDetails,
-                is_paid: false
+                is_paid: existingInvoice?.is_paid || false,
+                lastModified: new Date().toISOString(),
             };
 
-            // Save invoice using FileSystem API
-            const invoicesToSave = existingInvoice
-                ? await updateExistingInvoice(invoice)
-                : [invoice];
+            // Save invoice using the new unified saveInvoice function
+            await saveInvoice(invoice);
+            
+            loadingToast.success("Invoice saved successfully!");
+            router.push('/invoices');
 
-            const success = await saveInvoices(invoicesToSave);
-
-            if (success) {
-                loadingToast.success("Invoice saved successfully!");
-                router.push('/invoices');
-            } else {
-                loadingToast.error("Failed to save invoice.");
-            }
         } catch (error) {
             console.error("Error saving invoice:", error);
             loadingToast.error("An error occurred while saving the invoice.");
-        }
-    };
-
-    // Helper function to update an existing invoice
-    const updateExistingInvoice = async (updatedInvoice: Invoice): Promise<Invoice[]> => {
-        try {
-            // Get all invoices and update the matching one
-            const allInvoices = await loadInvoices();
-
-            // Find and replace the existing invoice
-            const updatedInvoices = allInvoices.map(inv =>
-                inv.id === updatedInvoice.id ? updatedInvoice : inv
-            );
-
-            return updatedInvoices;
-        } catch (error) {
-            console.error("Error updating invoice:", error);
-            return [updatedInvoice]; // Fall back to just this invoice if loading others fails
         }
     };
 
@@ -454,10 +424,12 @@ export function InvoiceForm({ id, formId, existingInvoice }: InvoiceFormProps) {
                                     {index === 0 && <label className="text-sm font-medium">Item Name</label>}
                                     <ProductSelector
                                         selectedProduct={{
+                                            id: '',
                                             name: item.name,
                                             price: item.price,
                                             description: item.description || '',
-                                            unit: ''
+                                            unit: '',
+                                            lastModified: ''
                                         }}
                                         onSelectProduct={(product) => handleProductSelect(index, product)}
                                     />

@@ -135,4 +135,27 @@ export const searchInvoices = (query: string): Invoice[] => {
         (invoice.invoice_number && invoice.invoice_number.toLowerCase().includes(lowerQuery)) ||
         (invoice.customer?.name && invoice.customer.name.toLowerCase().includes(lowerQuery))
     );
+};
+
+// Calculate total amount for an invoice
+export const calculateTotal = (items: { quantity: number; price: number }[]): number => {
+    return items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+};
+
+// Group invoices by month for monthly totals
+export const getMonthlyTotals = (invoices: Invoice[]): Record<string, number> => {
+    const totals: Record<string, number> = {};
+
+    invoices.forEach(invoice => {
+        const date = new Date(invoice.invoice_date);
+        const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+        if (!totals[monthYear]) {
+            totals[monthYear] = 0;
+        }
+
+        totals[monthYear] += invoice.total;
+    });
+
+    return totals;
 }; 

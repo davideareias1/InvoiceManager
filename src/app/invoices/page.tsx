@@ -227,21 +227,26 @@ export default function Invoices() {
 
     // Apply all filters and sorting
     const applyFiltersAndSort = useCallback(() => {
-        // Start with search-filtered results from invoices array
+        // Apply payment status and date filters first
+        const filtered = filterInvoices(invoices);
+
+        // Then, apply search to the already filtered list
         let searchResults;
         if (!searchTerm || searchTerm.trim() === '') {
-            searchResults = [...invoices];
+            searchResults = [...filtered];
         } else {
-            searchResults = searchInvoices(invoices, searchTerm) as Invoice[];
+            // We need to re-implement the search logic here since searchInvoices now only takes a query string.
+            const lowerQuery = searchTerm.toLowerCase();
+            searchResults = filtered.filter(invoice =>
+                (invoice.invoice_number && invoice.invoice_number.toLowerCase().includes(lowerQuery)) ||
+                (invoice.customer?.name && invoice.customer.name.toLowerCase().includes(lowerQuery))
+            );
         }
 
-        // Apply payment status and date filters
-        const filtered = filterInvoices(searchResults);
+        // Then sort the final list
+        const sorted = sortInvoices(searchResults);
 
-        // Then sort
-        const sorted = sortInvoices(filtered);
-
-        // Update the filteredInvoices state with both filtered and sorted results
+        // Update the filteredInvoices state with the final results
         setFilteredInvoices(sorted);
 
         // Update total pages

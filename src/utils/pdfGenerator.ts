@@ -36,7 +36,8 @@ export const generateInvoicePDF = (invoice: Invoice): string => {
             swift_bic: invoice.bank_details.bic,
             logo_url: '',
             is_vat_enabled: invoice.tax_rate ? invoice.tax_rate > 0 : true,
-            default_tax_rate: invoice.tax_rate || 19
+            default_tax_rate: invoice.tax_rate || 19,
+            lastModified: new Date().toISOString()
         };
 
         // Use the modern implementation but convert result to data URL

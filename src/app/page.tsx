@@ -11,6 +11,7 @@ import {
 import { useFileSystem } from '../contexts/FileSystemContext';
 import { useCompany } from '../contexts/CompanyContext';
 import { useGoogleDrive } from '../contexts/GoogleDriveContext';
+import { isGoogleDriveAuthenticated } from '../utils/googleDriveStorage';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format, parseISO, isThisMonth, subMonths } from 'date-fns';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts';
@@ -71,7 +72,7 @@ export default function HomePage() {
         setIsBackupEnabled,
         requestPermission: requestDrivePermission,
         signOut: signOutDrive,
-        syncAllFiles,
+        synchronize,
         syncProgress
     } = useGoogleDrive();
 
@@ -169,49 +170,37 @@ export default function HomePage() {
         return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
     };
 
-    const [syncResults, setSyncResults] = useState<{
-        invoices: number;
-        customers: number;
-        products: number;
-        success: boolean;
-    } | null>(null);
-
     const handleSyncFiles = async () => {
         if (!isDriveAuthenticated || !isBackupEnabled || syncProgress != null) return;
-        setSyncResults(null);
         try {
-            const results = await syncAllFiles();
-            setSyncResults(results);
-            if (results.success) {
-                showSuccess(`Synced ${results.invoices} invoices, ${results.customers} customers, and ${results.products} products.`);
-            } else {
-                showError('Error syncing files.');
+            await synchronize();
+            showSuccess(`Synchronization with Google Drive complete.`);
+            // After sync, we might want to reload local data to reflect changes
+            if (hasPermission) {
+                await loadInvoices();
             }
         } catch (error) {
             console.error('Error syncing files:', error);
             showError('Error syncing files.');
-        } finally {
-            setTimeout(() => setSyncResults(null), 10000);
         }
     };
 
     const handleToggleBackup = async (enabled: boolean) => {
         if (enabled && !isDriveAuthenticated) {
             setIsDriveConnecting(true); // Show connection visual
-            const granted = await requestDrivePermission();
-             // Keep connection visual until state updates (handled by useEffect)
-            if (!granted) {
+            await requestDrivePermission();
+            // The context will handle the state update after permission is granted or denied.
+            // We can optimisticly set the switch, or let the context's periodic check handle it.
+            // For better UX, we can check auth status again right after.
+            const granted = await isGoogleDriveAuthenticated();
+            if (granted) {
+                setIsBackupEnabled(true);
+                showSuccess('Google Drive connected.');
+            } else {
+                setIsBackupEnabled(false); // Ensure switch is off if permission was denied
                 showError('Failed to authorize Google Drive access');
-                setIsDriveConnecting(false); // Hide connection visual on failure
-                return; // Don't enable backup if permission failed
             }
-             // On success, useEffect will handle hiding the connection visual
-             // We might need setIsBackupEnabled(true) here if it doesn't get set automatically
-             // But let's rely on the context update first. We should call setIsBackupEnabled(true) though
-             // otherwise the switch state won't update until context is fully processed.
-             setIsBackupEnabled(true);
-             showSuccess('Google Drive connected.');
-
+            setIsDriveConnecting(false); // Hide connection visual on failure
 
         } else {
              setIsBackupEnabled(enabled); // Directly toggle if already authenticated or disabling
@@ -413,15 +402,6 @@ export default function HomePage() {
                                                 </>
                                             )}
                                         </Button>
-                                        {syncResults && (
-                                            <Alert variant={syncResults.success ? "default" : "destructive"} className={`text-xs p-2 ${syncResults.success ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200'}`}>
-                                                <AlertDescription>
-                                                    {syncResults.success
-                                                        ? `Sync successful: ${syncResults.invoices} invoices, ${syncResults.customers} customers, ${syncResults.products} products.`
-                                                        : 'Sync failed. Please try again.'}
-                                                </AlertDescription>
-                                            </Alert>
-                                        )}
                                     </div>
                                 )}
 

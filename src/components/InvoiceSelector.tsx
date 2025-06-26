@@ -3,36 +3,33 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import { Search, Check, Trash2 } from 'lucide-react';
-import { SavedInvoice, deleteInvoice, loadInvoices, loadInvoicesSync, searchInvoices } from '../utils/invoiceUtils';
+import { Invoice } from '../interfaces';
+import { deleteInvoice, loadInvoices, loadInvoicesSync, searchInvoices } from '../utils/invoiceUtils';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
-import { formatDateStringShort } from '../utils/dateUtils';
-import { formatAmount } from '../utils/moneyUtils';
+import { formatDate } from '../utils/formatters';
+import { formatCurrency } from '../utils/formatters';
 import { Badge } from './ui/badge';
 import { showError, showSuccess } from '../utils/notifications';
 
 interface InvoiceSelectorProps {
-    onSelect: (invoice: SavedInvoice) => void;
+    onSelect: (invoice: Invoice) => void;
 }
 
 export default function InvoiceSelector({ onSelect }: InvoiceSelectorProps) {
     const [searchQuery, setSearchQuery] = useState('');
-    const [invoices, setInvoices] = useState<SavedInvoice[]>([]);
+    const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [showResults, setShowResults] = useState(false);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-    const [invoiceToDelete, setInvoiceToDelete] = useState<SavedInvoice | null>(null);
+    const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
     const selectorRef = useRef<HTMLDivElement>(null);
 
     // Load invoices on component mount
     useEffect(() => {
-        // Start with sync loading for immediate response
         setInvoices(loadInvoicesSync());
-
-        // Then load async for complete data
         const loadAsync = async () => {
             const asyncInvoices = await loadInvoices();
             setInvoices(asyncInvoices);
         };
-
         loadAsync();
     }, []);
 
@@ -41,16 +38,7 @@ export default function InvoiceSelector({ onSelect }: InvoiceSelectorProps) {
         if (searchQuery) {
             setInvoices(searchInvoices(searchQuery));
         } else {
-            // Start with sync loading for immediate response
             setInvoices(loadInvoicesSync());
-
-            // Then load async for complete data
-            const loadAsync = async () => {
-                const asyncInvoices = await loadInvoices();
-                setInvoices(asyncInvoices);
-            };
-
-            loadAsync();
         }
     }, [searchQuery]);
 
@@ -68,17 +56,14 @@ export default function InvoiceSelector({ onSelect }: InvoiceSelectorProps) {
         };
     }, []);
 
-    // Handle invoice selection
-    const handleSelectInvoice = (invoice: SavedInvoice) => {
+    const handleSelectInvoice = (invoice: Invoice) => {
         onSelect(invoice);
         setShowResults(false);
         setSearchQuery('');
     };
 
-    // Handle invoice deletion
     const handleDeleteInvoice = async () => {
         if (!invoiceToDelete) return;
-
         try {
             await deleteInvoice(invoiceToDelete.id);
             const updatedInvoices = await loadInvoices();
@@ -92,8 +77,7 @@ export default function InvoiceSelector({ onSelect }: InvoiceSelectorProps) {
         }
     };
 
-    // Open delete confirmation dialog
-    const confirmDelete = (invoice: SavedInvoice, event: React.MouseEvent) => {
+    const confirmDelete = (invoice: Invoice, event: React.MouseEvent) => {
         event.stopPropagation();
         setInvoiceToDelete(invoice);
         setIsDeleteDialogOpen(true);
@@ -131,7 +115,7 @@ export default function InvoiceSelector({ onSelect }: InvoiceSelectorProps) {
                             <div className="flex-1">
                                 <div className="font-medium flex items-center gap-2">
                                     <span>
-                                        {invoice.invoiceNumber || 'No Invoice Number'}
+                                        {invoice.invoice_number || 'No Invoice Number'}
                                     </span>
                                     {invoice.status && (
                                         <Badge
@@ -147,14 +131,14 @@ export default function InvoiceSelector({ onSelect }: InvoiceSelectorProps) {
                                     )}
                                 </div>
                                 <div className="text-sm text-gray-600 mt-1">
-                                    {invoice.customerName || 'No Customer'}
+                                    {invoice.customer?.name || 'No Customer'}
                                 </div>
                                 <div className="flex justify-between items-center mt-1">
                                     <div className="text-xs text-gray-500">
-                                        {invoice.date ? formatDateStringShort(invoice.date) : 'No Date'}
+                                        {invoice.invoice_date ? formatDate(invoice.invoice_date) : 'No Date'}
                                     </div>
                                     <div className="text-sm font-semibold">
-                                        {formatAmount(invoice.totalAmount || 0)}
+                                        {formatCurrency(invoice.total || 0)}
                                     </div>
                                 </div>
                             </div>
@@ -194,7 +178,7 @@ export default function InvoiceSelector({ onSelect }: InvoiceSelectorProps) {
                         <DialogDescription>
                             Are you sure you want to delete invoice{' '}
                             <span className="font-semibold">
-                                {invoiceToDelete?.invoiceNumber || 'this invoice'}
+                                {invoiceToDelete?.invoice_number || 'this invoice'}
                             </span>
                             ? This action cannot be undone.
                         </DialogDescription>

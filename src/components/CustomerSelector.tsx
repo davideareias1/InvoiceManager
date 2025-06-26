@@ -213,7 +213,7 @@ export function CustomerSelector({ currentCustomer, onSelectCustomer }: Customer
                             variant="outline"
                             size="sm"
                             onClick={() => {
-                                onSelectCustomer({ name: '', address: '', city: '', number: '' });
+                                onSelectCustomer({ id: '', name: '', address: '', city: '', number: '', lastModified: '' });
                                 setSearchQuery('');
                             }}
                             className="flex items-center gap-1 h-10"
