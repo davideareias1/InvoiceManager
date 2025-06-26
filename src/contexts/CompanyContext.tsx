@@ -6,7 +6,7 @@ import { loadCompanyInfo, saveCompanyInfo } from '../utils/companyUtils';
 import { useFileSystem } from './FileSystemContext';
 
 // Default company info
-const DEFAULT_COMPANY_INFO: CompanyInfo = {
+export const DEFAULT_COMPANY_INFO: CompanyInfo = {
     name: 'Your Company Name',
     address: 'Your Company Address\nCity, Country',
     phone: '',

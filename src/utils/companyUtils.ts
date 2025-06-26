@@ -2,6 +2,7 @@
 
 import { CompanyInfo } from '../interfaces';
 import { loadCompanyInfoFromFile, saveCompanyInfoToFile } from './fileSystemStorage';
+import { DEFAULT_COMPANY_INFO } from '../contexts/CompanyContext';
 
 let cachedCompanyInfo: CompanyInfo | null = null;
 
@@ -30,16 +31,18 @@ export async function loadCompanyInfo(): Promise<CompanyInfo | null> {
 export async function saveCompanyInfo(info: Partial<CompanyInfo>): Promise<CompanyInfo> {
     const now = new Date().toISOString();
     
-    // Create the updated object, ensuring we have the full object if it exists.
+    // Ensure we're updating a complete object, using defaults as a base.
+    const baseInfo = cachedCompanyInfo || DEFAULT_COMPANY_INFO;
+
     const updatedInfo: CompanyInfo = {
-        ...(cachedCompanyInfo || {}),
+        ...baseInfo,
         ...info,
         lastModified: now,
-    } as CompanyInfo;
+    };
 
     cachedCompanyInfo = updatedInfo;
 
-    // Save locally. The manual backup process will handle uploading to Drive.
+    // Save locally.
     await saveCompanyInfoToFile(updatedInfo);
 
     return updatedInfo;
