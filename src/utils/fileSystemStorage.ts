@@ -672,4 +672,47 @@ export async function loadCompanyInfoFromFile(): Promise<any | null> {
         console.error('Error loading company info from file:', error);
         return null; // Return null on other errors
     }
+}
+
+/**
+ * Verifies and, if necessary, re-requests permission for a given directory handle.
+ * @param handle The directory handle to verify.
+ * @returns True if permission is granted, false otherwise.
+ */
+export async function verifyHandlePermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
+    const options = { mode: 'readwrite' as const };
+    // Check if permission is already granted
+    if (await handle.queryPermission(options) === 'granted') {
+        return true;
+    }
+    // If not, request permission
+    if (await handle.requestPermission(options) === 'granted') {
+        return true;
+    }
+    // Permission not granted
+    return false;
+}
+
+/**
+ * Gets a handle for a subdirectory. If the subdirectory doesn't exist, it's created.
+ * @returns A FileSystemDirectoryHandle for the subdirectory.
+ */
+export async function getDirectoryHandle(directoryName: string, baseHandle?: FileSystemDirectoryHandle): Promise<FileSystemDirectoryHandle> {
+    const root = baseHandle || await getSavedDirectoryHandle();
+    if (!root) {
+        throw new Error("Root directory handle not found. Please grant permission first.");
+    }
+
+    // Ensure we have permission for the root handle before proceeding
+    if (!await verifyHandlePermission(root)) {
+        throw new Error("Permission denied for the root directory.");
+    }
+    
+    try {
+        const directoryHandle = await root.getDirectoryHandle(directoryName, { create: true });
+        return directoryHandle;
+    } catch (error) {
+        console.error(`Error getting directory handle for ${directoryName}:`, error);
+        throw error;
+    }
 } 
