@@ -40,6 +40,31 @@ export { };
 let directoryHandle: FileSystemDirectoryHandle | null = null;
 
 /**
+ * Gets the directory handle and verifies read/write permissions.
+ * If permissions are not granted, it will attempt to request them.
+ * @throws {Error} If permission is not granted or handle is not available.
+ */
+async function getVerifiedDirectoryHandle(): Promise<FileSystemDirectoryHandle> {
+    if (!directoryHandle) {
+        throw new Error("Directory handle not available. Please select a directory first.");
+    }
+
+    const options = { mode: 'readwrite' as const };
+
+    // Check if permission is already granted
+    if ((await directoryHandle.queryPermission(options)) === 'granted') {
+        return directoryHandle;
+    }
+
+    // If not granted, request it
+    if ((await directoryHandle.requestPermission(options)) === 'granted') {
+        return directoryHandle;
+    }
+
+    throw new Error("File system permission denied.");
+}
+
+/**
  * Set the directory handle for file system operations
  */
 export function setDirectoryHandle(handle: FileSystemDirectoryHandle | null): void {
@@ -75,17 +100,14 @@ async function getOrCreateDirectory(parentHandle: FileSystemDirectoryHandle, dir
  * Initialize required directory structure
  */
 async function initializeDirectoryStructure(): Promise<boolean> {
-    if (!directoryHandle) {
-        return false;
-    }
-
     try {
+        const handle = await getVerifiedDirectoryHandle();
         // Create main directories if they don't exist
-        await getOrCreateDirectory(directoryHandle, CUSTOMERS_DIRECTORY);
-        await getOrCreateDirectory(directoryHandle, PRODUCTS_DIRECTORY);
+        await getOrCreateDirectory(handle, CUSTOMERS_DIRECTORY);
+        await getOrCreateDirectory(handle, PRODUCTS_DIRECTORY);
 
         // Create invoices directory
-        const invoicesDir = await getOrCreateDirectory(directoryHandle, INVOICES_DIRECTORY);
+        const invoicesDir = await getOrCreateDirectory(handle, INVOICES_DIRECTORY);
 
         // Create current year directory inside invoices
         const currentYear = new Date().getFullYear().toString();
@@ -102,13 +124,10 @@ async function initializeDirectoryStructure(): Promise<boolean> {
  * Save a customer to file
  */
 export async function saveCustomerToFile(customer: any): Promise<boolean> {
-    if (!directoryHandle) {
-        return false;
-    }
-
     try {
+        const handle = await getVerifiedDirectoryHandle();
         // Get or create customers directory
-        const customersDir = await getOrCreateDirectory(directoryHandle, CUSTOMERS_DIRECTORY);
+        const customersDir = await getOrCreateDirectory(handle, CUSTOMERS_DIRECTORY);
 
         // Create a filename based on customer ID or name (sanitized)
         const filename = `customer_${customer.id || sanitizeFilename(customer.name)}${FILE_EXTENSION}`;
@@ -136,13 +155,10 @@ export async function saveCustomerToFile(customer: any): Promise<boolean> {
  * Save a product to file
  */
 export async function saveProductToFile(product: any): Promise<boolean> {
-    if (!directoryHandle) {
-        return false;
-    }
-
     try {
+        const handle = await getVerifiedDirectoryHandle();
         // Get or create products directory
-        const productsDir = await getOrCreateDirectory(directoryHandle, PRODUCTS_DIRECTORY);
+        const productsDir = await getOrCreateDirectory(handle, PRODUCTS_DIRECTORY);
 
         // Create a filename based on product ID or name (sanitized)
         const filename = `product_${product.id || sanitizeFilename(product.name)}${FILE_EXTENSION}`;
@@ -170,13 +186,10 @@ export async function saveProductToFile(product: any): Promise<boolean> {
  * Load all customers from files
  */
 export async function loadCustomersFromFiles(): Promise<any[]> {
-    if (!directoryHandle) {
-        return [];
-    }
-
     try {
+        const handle = await getVerifiedDirectoryHandle();
         // Get customers directory
-        const customersDir = await getOrCreateDirectory(directoryHandle, CUSTOMERS_DIRECTORY);
+        const customersDir = await getOrCreateDirectory(handle, CUSTOMERS_DIRECTORY);
 
         const customers: any[] = [];
 
@@ -207,13 +220,10 @@ export async function loadCustomersFromFiles(): Promise<any[]> {
  * Load all products from files
  */
 export async function loadProductsFromFiles(): Promise<any[]> {
-    if (!directoryHandle) {
-        return [];
-    }
-
     try {
+        const handle = await getVerifiedDirectoryHandle();
         // Get products directory
-        const productsDir = await getOrCreateDirectory(directoryHandle, PRODUCTS_DIRECTORY);
+        const productsDir = await getOrCreateDirectory(handle, PRODUCTS_DIRECTORY);
 
         const products: any[] = [];
 
@@ -244,13 +254,10 @@ export async function loadProductsFromFiles(): Promise<any[]> {
  * Save an invoice to a file with year folder organization
  */
 export async function saveInvoiceToFile(invoice: Invoice): Promise<boolean> {
-    if (!directoryHandle) {
-        return false;
-    }
-
     try {
+        const handle = await getVerifiedDirectoryHandle();
         // Get base invoices directory
-        const invoicesDir = await getOrCreateDirectory(directoryHandle, INVOICES_DIRECTORY);
+        const invoicesDir = await getOrCreateDirectory(handle, INVOICES_DIRECTORY);
 
         // Get year from invoice date
         const invoiceDate = new Date(invoice.invoice_date);
@@ -357,13 +364,10 @@ export async function requestDirectoryPermission(): Promise<boolean> {
  * Load invoices from files in the selected directory (now organized by year)
  */
 export async function loadInvoicesFromFiles(): Promise<Invoice[]> {
-    if (!directoryHandle) {
-        return [];
-    }
-
     try {
+        const handle = await getVerifiedDirectoryHandle();
         // Get base invoices directory
-        const invoicesDir = await getOrCreateDirectory(directoryHandle, INVOICES_DIRECTORY);
+        const invoicesDir = await getOrCreateDirectory(handle, INVOICES_DIRECTORY);
 
         const invoices: Invoice[] = [];
 
@@ -413,13 +417,10 @@ export async function loadInvoicesFromFiles(): Promise<Invoice[]> {
  * Delete an invoice file (considering year organization)
  */
 export async function deleteInvoiceFile(invoiceNumber: string): Promise<boolean> {
-    if (!directoryHandle) {
-        return false;
-    }
-
     try {
+        const handle = await getVerifiedDirectoryHandle();
         // Get base invoices directory
-        const invoicesDir = await getOrCreateDirectory(directoryHandle, INVOICES_DIRECTORY);
+        const invoicesDir = await getOrCreateDirectory(handle, INVOICES_DIRECTORY);
 
         // We need to search through all year directories since we don't know the year
         let deleted = false;
@@ -495,13 +496,13 @@ async function saveDirectoryHandle(handle: FileSystemDirectoryHandle): Promise<v
             const tx = db.transaction(['handles'], 'readwrite');
             const store = tx.objectStore('handles');
             await store.put(handle, DIRECTORY_HANDLE_KEY);
-            await new Promise((resolve) => {
+            await new Promise((resolve, reject) => {
                 tx.oncomplete = () => resolve(undefined);
-                tx.onerror = () => resolve(undefined);
+                tx.onerror = () => reject(tx.error);
             });
             db.close();
         } catch (error) {
-            console.error('Error saving directory handle:', error);
+            console.error('Failed to save directory handle:', error);
         }
     }
 }
@@ -557,13 +558,9 @@ function openDatabase(): Promise<IDBDatabase> {
  * Delete a customer file
  */
 export async function deleteCustomerFile(customerId: string): Promise<boolean> {
-    if (!directoryHandle) {
-        return false;
-    }
-
     try {
-        // Get customers directory
-        const customersDir = await getOrCreateDirectory(directoryHandle, CUSTOMERS_DIRECTORY);
+        const handle = await getVerifiedDirectoryHandle();
+        const customersDir = await getOrCreateDirectory(handle, CUSTOMERS_DIRECTORY);
 
         let deleted = false;
 
@@ -601,13 +598,9 @@ export async function deleteCustomerFile(customerId: string): Promise<boolean> {
  * Delete a product file
  */
 export async function deleteProductFile(productId: string): Promise<boolean> {
-    if (!directoryHandle) {
-        return false;
-    }
-
     try {
-        // Get products directory
-        const productsDir = await getOrCreateDirectory(directoryHandle, PRODUCTS_DIRECTORY);
+        const handle = await getVerifiedDirectoryHandle();
+        const productsDir = await getOrCreateDirectory(handle, PRODUCTS_DIRECTORY);
 
         let deleted = false;
 
@@ -645,12 +638,9 @@ export async function deleteProductFile(productId: string): Promise<boolean> {
  * @param companyInfo The company information object.
  */
 export async function saveCompanyInfoToFile(companyInfo: any): Promise<void> {
-    if (!directoryHandle) {
-        console.warn('Directory handle not available, cannot save company info.');
-        return;
-    }
     try {
-        const fileHandle = await directoryHandle.getFileHandle(COMPANY_INFO_FILENAME, { create: true });
+        const handle = await getVerifiedDirectoryHandle();
+        const fileHandle = await handle.getFileHandle(COMPANY_INFO_FILENAME, { create: true });
         const writable = await fileHandle.createWritable();
         await writable.write(JSON.stringify(companyInfo, null, 2));
         await writable.close();
@@ -665,15 +655,19 @@ export async function saveCompanyInfoToFile(companyInfo: any): Promise<void> {
  * @returns The company information object, or null if not found.
  */
 export async function loadCompanyInfoFromFile(): Promise<any | null> {
-    if (!directoryHandle) return null;
     try {
-        const fileHandle = await directoryHandle.getFileHandle(COMPANY_INFO_FILENAME);
+        const handle = await getVerifiedDirectoryHandle();
+        const fileHandle = await handle.getFileHandle(COMPANY_INFO_FILENAME);
         const file = await fileHandle.getFile();
         const contents = await file.text();
         return JSON.parse(contents);
     } catch (error) {
         if (error instanceof DOMException && error.name === 'NotFoundError') {
             return null; // File doesn't exist, which is a valid case.
+        }
+        if(error instanceof Error && error.message.includes("Permission denied")){
+            // This case is handled, but we should not log an error for it
+            return null;
         }
         console.error('Error loading company info from file:', error);
         return null; // Return null on other errors
