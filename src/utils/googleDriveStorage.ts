@@ -1223,11 +1223,11 @@ export async function deleteInvoiceFromGoogleDrive(invoiceNumber: string): Promi
         
         // Look in each year folder
         for (const yearFolder of yearFolders) {
-            const fileId = await findFile(filename, yearFolder.id);
-            if (fileId) {
+            const fileInfo = await findFile(filename, yearFolder.id);
+            if (fileInfo) {
                 // Delete the file - call as a method with bracket notation to avoid TypeScript issues
                 await (gapi.client.drive.files as any)['delete']({
-                    fileId: fileId
+                    fileId: fileInfo.id
                 });
                 return true;
             }
