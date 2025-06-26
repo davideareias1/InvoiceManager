@@ -32,20 +32,6 @@ export default function SettingsPage() {
         loadAndSetCompanyInfo();
     }, []); // Empty dependency array ensures this runs only once on mount
 
-    // Effect to sync freelancer name with company and account name
-    useEffect(() => {
-        if (companyInfo.is_freelancer) {
-            // If freelancer mode is on, sync the full_name to name and account_name
-            // but only if full_name is not empty, to avoid overwriting company name when just toggling the switch
-            if (companyInfo.full_name) {
-                updateCompanyInfo({
-                    name: companyInfo.full_name,
-                    account_name: companyInfo.full_name,
-                });
-            }
-        }
-    }, [companyInfo.is_freelancer, companyInfo.full_name, updateCompanyInfo]);
-
     // Convert form field changes to company info updates
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -223,45 +209,43 @@ export default function SettingsPage() {
                                             </div>
                                         </div>
 
-                                        {companyInfo.is_freelancer && (
-                                            <div className="mt-4 p-4 bg-blue-50 border border-blue-100 rounded-md">
-                                                <div className="space-y-3 max-w-xl">
-                                                    <div className="flex justify-between items-start gap-2">
-                                                        <Label htmlFor="full_name" className="font-medium text-gray-900 flex items-center gap-1.5">
-                                                            Full Legal Name
-                                                            <TooltipProvider>
-                                                                <Tooltip>
-                                                                    <TooltipTrigger>
-                                                                        <Info className="h-3.5 w-3.5 text-gray-500" />
-                                                                    </TooltipTrigger>
-                                                                    <TooltipContent>
-                                                                        <p className="text-xs">Your full name is required for invoices as a freelancer</p>
-                                                                    </TooltipContent>
-                                                                </Tooltip>
-                                                            </TooltipProvider>
-                                                        </Label>
-                                                        {!companyInfo.full_name && (
-                                                            <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs font-normal">
-                                                                Required
-                                                            </Badge>
-                                                        )}
-                                                    </div>
-                                                    <Input
-                                                        id="full_name"
-                                                        name="full_name"
-                                                        value={companyInfo.full_name || ''}
-                                                        onChange={handleChange}
-                                                        placeholder="Your full legal name"
-                                                        className={`border ${!companyInfo.full_name ? 'border-red-300 focus:ring-red-500' : 'border-blue-200 focus:ring-blue-500'} bg-white h-10`}
-                                                    />
-                                                    {!companyInfo.full_name && (
-                                                        <p className="text-xs text-red-600">
-                                                            Full name is required for freelancers and will appear on invoices
-                                                        </p>
+                                        <div className="mt-4 p-4 bg-blue-50 border border-blue-100 rounded-md">
+                                            <div className="space-y-3 max-w-xl">
+                                                <div className="flex justify-between items-start gap-2">
+                                                    <Label htmlFor="full_name" className="font-medium text-gray-900 flex items-center gap-1.5">
+                                                        Full Legal Name
+                                                        <TooltipProvider>
+                                                            <Tooltip>
+                                                                <TooltipTrigger>
+                                                                    <Info className="h-3.5 w-3.5 text-gray-500" />
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p className="text-xs">Your full name can be used on invoices.</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+                                                    </Label>
+                                                    {companyInfo.is_freelancer && !companyInfo.full_name && (
+                                                        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs font-normal">
+                                                            Required for freelancers
+                                                        </Badge>
                                                     )}
                                                 </div>
+                                                <Input
+                                                    id="full_name"
+                                                    name="full_name"
+                                                    value={companyInfo.full_name || ''}
+                                                    onChange={handleChange}
+                                                    placeholder="Your full legal name"
+                                                    className={`border ${companyInfo.is_freelancer && !companyInfo.full_name ? 'border-red-300 focus:ring-red-500' : 'border-blue-200 focus:ring-blue-500'} bg-white h-10`}
+                                                />
+                                                {companyInfo.is_freelancer && !companyInfo.full_name && (
+                                                    <p className="text-xs text-red-600">
+                                                        Full name is required for freelancers and will appear on invoices.
+                                                    </p>
+                                                )}
                                             </div>
-                                        )}
+                                        </div>
                                     </div>
 
                                     {/* Company Info Section */}
@@ -533,11 +517,7 @@ export default function SettingsPage() {
                                                         name="account_name"
                                                         value={companyInfo.account_name}
                                                         onChange={handleChange}
-                                                        placeholder={
-                                                            companyInfo.is_freelancer 
-                                                                ? (companyInfo.full_name || "Your Full Name") 
-                                                                : (companyInfo.name || "Your Company Name")
-                                                        }
+                                                        placeholder={companyInfo.name || "Your Company Name"}
                                                         className="border-gray-300 focus:ring-primary/30 h-10"
                                                     />
                                                 </div>
@@ -741,10 +721,10 @@ export default function SettingsPage() {
                                                             </AvatarFallback>
                                                         </Avatar>
                                                         <div>
-                                                            {companyInfo.is_freelancer && companyInfo.full_name ? (
+                                                            {companyInfo.full_name ? (
                                                                 <>
                                                                     <p className="font-bold text-lg text-gray-900">{companyInfo.full_name}</p>
-                                                                    {companyInfo.name && companyInfo.name !== 'Your Company Name' && (
+                                                                    {companyInfo.name && companyInfo.name !== companyInfo.full_name && (
                                                                         <p className="text-sm text-gray-600">{companyInfo.name}</p>
                                                                     )}
                                                                 </>
