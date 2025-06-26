@@ -21,11 +21,16 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export default function SettingsPage() {
-    const { companyInfo, updateCompanyInfo, resetCompanyInfo, logoFile, setLogoFile } = useCompany();
+    const { companyInfo, updateCompanyInfo, resetCompanyInfo, logoFile, setLogoFile, loadAndSetCompanyInfo } = useCompany();
     const [activeTab, setActiveTab] = useState('general');
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
     const [isSaving, setIsSaving] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Load the latest company info when the page is opened
+    useEffect(() => {
+        loadAndSetCompanyInfo();
+    }, []); // Empty dependency array ensures this runs only once on mount
 
     // Effect to sync freelancer name with company and account name
     useEffect(() => {

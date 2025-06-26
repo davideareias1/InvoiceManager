@@ -36,6 +36,7 @@ interface CompanyContextType {
     resetCompanyInfo: () => void;
     logoFile: File | null;
     setLogoFile: (file: File | null) => void;
+    loadAndSetCompanyInfo: () => Promise<void>;
 }
 
 const CompanyContext = createContext<CompanyContextType | undefined>(undefined);
@@ -58,44 +59,42 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
 
+    const loadAndSetCompanyInfo = async () => {
+        if (!isFileSystemInitialized || !hasPermission) return;
+        try {
+            const savedInfo = await loadCompanyInfo();
+            if (savedInfo) {
+                setCompanyInfo(savedInfo);
+                if (savedInfo.logo_url && savedInfo.logo_url.startsWith('data:')) {
+                    // Logic to convert data URL to File
+                    const dataURLToFile = (dataUrl: string, filename: string): File => {
+                        const arr = dataUrl.split(',');
+                        const mimeMatch = arr[0].match(/:(.*?);/);
+                        if (!mimeMatch) throw new Error("Invalid data URL");
+                        const mime = mimeMatch[1];
+                        const bstr = atob(arr[1]);
+                        let n = bstr.length;
+                        const u8arr = new Uint8Array(n);
+                        while (n--) {
+                            u8arr[n] = bstr.charCodeAt(n);
+                        }
+                        return new File([u8arr], filename, { type: mime });
+                    };
+                    setLogoFile(dataURLToFile(savedInfo.logo_url, 'company_logo.png'));
+                }
+            }
+        } catch (error) {
+            console.error('Error explicitly loading company info:', error);
+        }
+    };
+
     // Load company info from file on mount, but only after file system is ready
     useEffect(() => {
         const fetchCompanyInfo = async () => {
             if (isInitialized || !isFileSystemInitialized || !hasPermission) return;
             
-            try {
-                const savedInfo = await loadCompanyInfo();
-                if (savedInfo) {
-                    setCompanyInfo(savedInfo);
-
-                    // If there's a logo URL and it's a data URL, try to convert it to a File
-                    if (savedInfo.logo_url && savedInfo.logo_url.startsWith('data:')) {
-                        try {
-                            const dataURLToFile = (dataUrl: string, filename: string): File => {
-                                const arr = dataUrl.split(',');
-                                const mimeMatch = arr[0].match(/:(.*?);/);
-                                if (!mimeMatch) throw new Error("Invalid data URL");
-                                const mime = mimeMatch[1];
-                                const bstr = atob(arr[1]);
-                                let n = bstr.length;
-                                const u8arr = new Uint8Array(n);
-                                while (n--) {
-                                    u8arr[n] = bstr.charCodeAt(n);
-                                }
-                                return new File([u8arr], filename, { type: mime });
-                            };
-
-                            setLogoFile(dataURLToFile(savedInfo.logo_url, 'company_logo.png'));
-                        } catch (error) {
-                            console.error('Error loading logo from data URL:', error);
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error('Error loading company info:', error);
-            } finally {
-                setIsInitialized(true);
-            }
+            await loadAndSetCompanyInfo();
+            setIsInitialized(true);
         };
         fetchCompanyInfo();
     }, [isInitialized, isFileSystemInitialized, hasPermission]);
@@ -138,7 +137,8 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
         updateCompanyInfo,
         resetCompanyInfo,
         logoFile,
-        setLogoFile: handleLogoFileChange
+        setLogoFile: handleLogoFileChange,
+        loadAndSetCompanyInfo
     };
 
     return (
