@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useCompany } from '../../contexts/CompanyContext';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,20 @@ export default function SettingsPage() {
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
     const [isSaving, setIsSaving] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Effect to sync freelancer name with company and account name
+    useEffect(() => {
+        if (companyInfo.is_freelancer) {
+            // If freelancer mode is on, sync the full_name to name and account_name
+            // but only if full_name is not empty, to avoid overwriting company name when just toggling the switch
+            if (companyInfo.full_name) {
+                updateCompanyInfo({
+                    name: companyInfo.full_name,
+                    account_name: companyInfo.full_name,
+                });
+            }
+        }
+    }, [companyInfo.is_freelancer, companyInfo.full_name]);
 
     // Convert form field changes to company info updates
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -198,9 +212,6 @@ export default function SettingsPage() {
                                                     checked={companyInfo.is_freelancer || false}
                                                     onCheckedChange={(checked) => {
                                                         updateCompanyInfo({ is_freelancer: checked });
-                                                        if (checked && companyInfo.full_name) {
-                                                            updateCompanyInfo({ account_name: companyInfo.full_name });
-                                                        }
                                                     }}
                                                     className="data-[state=checked]:bg-blue-600"
                                                 />
@@ -234,13 +245,7 @@ export default function SettingsPage() {
                                                         id="full_name"
                                                         name="full_name"
                                                         value={companyInfo.full_name || ''}
-                                                        onChange={(e) => {
-                                                            const newFullName = e.target.value;
-                                                            handleChange(e);
-                                                            if (companyInfo.is_freelancer) {
-                                                                updateCompanyInfo({ account_name: newFullName });
-                                                            }
-                                                        }}
+                                                        onChange={handleChange}
                                                         placeholder="Your full legal name"
                                                         className={`border ${!companyInfo.full_name ? 'border-red-300 focus:ring-red-500' : 'border-blue-200 focus:ring-blue-500'} bg-white h-10`}
                                                     />
