@@ -2,13 +2,14 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Checkbox } from '../../components/ui/checkbox';
 import { Label } from '../../components/ui/label';
-import { searchInvoices, getMonthlyTotals } from '../../utils/invoiceUtils';
+import { searchInvoices, getMonthlyTotals, createRectificationPair } from '../../utils/invoiceUtils';
 import { generateInvoicePDF } from '@/utils/pdfUtils';
 import { Invoice } from '../../interfaces';
 import { PlusCircle, Download, Trash, Search, FileText, AlertCircle, FolderOpen, Clock, X, CheckCircle, ChevronLeft, ChevronRight, ArrowUpDown, RefreshCw, AlertTriangle } from 'lucide-react';
@@ -23,11 +24,9 @@ type SortField = 'invoice_number' | 'invoice_date' | 'customer.name' | 'total';
 type SortDirection = 'asc' | 'desc';
 
 export default function Invoices() {
-    const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [filteredInvoices, setFilteredInvoices] = useState<Invoice[]>([]);
     const [displayedInvoices, setDisplayedInvoices] = useState<Invoice[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
-    const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
     const [autoRefreshDisabled, setAutoRefreshDisabled] = useState(false);
@@ -38,7 +37,7 @@ export default function Invoices() {
     const [totalPages, setTotalPages] = useState(1);
 
     // Sorting and filtering states
-    const [sortField, setSortField] = useState<SortField>('invoice_date');
+    const [sortField, setSortField] = useState<SortField>('invoice_number');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
     const [showPaid, setShowPaid] = useState(true);
     const [showUnpaid, setShowUnpaid] = useState(true);
@@ -51,80 +50,38 @@ export default function Invoices() {
         isSupported,
         hasPermission,
         isInitialized,
-        loadInvoices,
+        invoices,
+        isLoading,
         deleteInvoice: deleteInvoiceFromFS,
         requestPermission,
-        saveInvoice
+        resetDirectoryAccess,
+        saveInvoice,
+        refreshInvoices,
     } = useFileSystem();
 
     // Get company information for PDF generation
     const { companyInfo } = useCompany();
+    
+    // Router for navigation
+    const router = useRouter();
 
     // Add loading state trackers for invoice actions
     const [actionLoading, setActionLoading] = useState<{[key: string]: string}>({});
 
-    // Load invoices function (extracted for reuse)
-    const loadInvoicesData = useCallback(async (showLoadingState = true) => {
-        if (showLoadingState) {
-            setIsLoading(true);
-        }
-        setLoadError(null);
-
-        try {
-            // If File System API is supported and we have permission
-            if (isSupported && hasPermission) {
-                const loadedInvoices = await loadInvoices();
-                console.log(`Loaded ${loadedInvoices.length} invoices`);
-                setInvoices(loadedInvoices);
-
-                // Don't directly set filteredInvoices here, let the useEffect handle it
-                // This avoids circular dependencies and double updates
-
-                setLastRefreshed(new Date());
-            } else {
-                // Set empty state - will show permission prompt UI
-                setInvoices([]);
-                setFilteredInvoices([]);
-                setDisplayedInvoices([]);
-            }
-        } catch (error) {
-            console.error("Error loading invoices:", error);
-            setLoadError("Failed to load invoices. Please try again.");
-            setInvoices([]);
-            setFilteredInvoices([]);
-            setDisplayedInvoices([]);
-        } finally {
-            if (showLoadingState) {
-                setIsLoading(false);
-            }
-        }
-    }, [isSupported, hasPermission, loadInvoices]);
-
-    // Initial load
-    useEffect(() => {
-        // Only load once when the page initially renders and context is initialized
-        if (isInitialized && !initialLoadDone.current) {
-            initialLoadDone.current = true;
-            loadInvoicesData();
-        }
-    }, [isInitialized, loadInvoicesData]);
-
     // Handle manual refresh
     const handleRefresh = async () => {
-        setIsLoading(true);
         setLoadError(null);
 
         try {
-            if (isSupported && hasPermission) {
-                await loadInvoicesData();
+            if (isSupported && hasPermission && refreshInvoices) {
+                await refreshInvoices();
                 showSuccess("Invoices refreshed");
+                setLastRefreshed(new Date());
             }
         } catch (error) {
             console.error("Error refreshing invoices:", error);
             setLoadError("Failed to refresh invoices");
             showError("Failed to refresh invoices");
-        } finally {
-            setIsLoading(false);
         }
     };
 
@@ -144,9 +101,11 @@ export default function Invoices() {
     useEffect(() => {
         // Only do anything if the permission state changes from false to true
         if (isSupported && hasPermission && initialLoadDone.current && shouldAutoRefresh()) {
-            loadInvoicesData(false); // Silent refresh without loading indicator
+            if (refreshInvoices) {
+                refreshInvoices();
+            }
         }
-    }, [hasPermission, isSupported, loadInvoicesData, shouldAutoRefresh]);
+    }, [hasPermission, isSupported, refreshInvoices, shouldAutoRefresh]);
 
     // Toggle auto-refresh
     const toggleAutoRefresh = () => {
@@ -163,18 +122,21 @@ export default function Invoices() {
     // Sorting function
     const sortInvoices = useCallback((invoices: Invoice[]): Invoice[] => {
         return [...invoices].sort((a, b) => {
-            let aValue, bValue;
+            let aValue: any, bValue: any;
 
             // Handle nested properties like customer.name
             if (sortField === 'customer.name') {
-                aValue = a.customer.name;
-                bValue = b.customer.name;
+                aValue = a.customer?.name || '';
+                bValue = b.customer?.name || '';
             } else if (sortField === 'invoice_date') {
                 aValue = new Date(a.invoice_date).getTime();
                 bValue = new Date(b.invoice_date).getTime();
             } else if (sortField === 'total') {
                 aValue = a.total;
                 bValue = b.total;
+            } else if (sortField === 'invoice_number') {
+                aValue = parseInt(a.invoice_number, 10);
+                bValue = parseInt(b.invoice_number, 10);
             } else {
                 // @ts-ignore - we know sortField is a key of Invoice
                 aValue = a[sortField];
@@ -263,10 +225,10 @@ export default function Invoices() {
 
     // Apply filters and sorting when dependencies change
     useEffect(() => {
-        if (invoices.length > 0) {
+        if (isInitialized) {
             applyFiltersAndSort();
         }
-    }, [invoices, searchTerm, sortField, sortDirection, showPaid, showUnpaid, dateFilter, applyFiltersAndSort]);
+    }, [isInitialized, invoices, searchTerm, sortField, sortDirection, showPaid, showUnpaid, dateFilter, applyFiltersAndSort]);
 
     // Reset to page 1 when filters change
     useEffect(() => {
@@ -325,9 +287,7 @@ export default function Invoices() {
                 const success = await deleteInvoiceFromFS(invoiceNumber);
 
                 if (success) {
-                    // Update local state - this will trigger the filtering effects
-                    const updatedInvoices = invoices.filter(inv => inv.invoice_number !== invoiceNumber);
-                    setInvoices(updatedInvoices);
+                    // State update is handled by the context
                     showSuccess("Invoice deleted successfully");
                 } else {
                     showError("Failed to delete invoice");
@@ -363,15 +323,7 @@ export default function Invoices() {
             const success = await saveInvoice(updatedInvoice);
 
             if (success) {
-                // Update local state - this will trigger the filters to reapply
-                const updatedInvoices = invoices.map(inv =>
-                    inv.invoice_number === invoice.invoice_number
-                        ? updatedInvoice
-                        : inv
-                );
-                setInvoices(updatedInvoices);
-
-                // No need to call loadInvoicesData here, as the useEffect will handle the filtering
+                // State update is handled by context now
                 showSuccess(`Invoice marked as ${updatedInvoice.is_paid ? 'paid' : 'unpaid'}`);
             }
         } catch (error) {
@@ -386,6 +338,51 @@ export default function Invoices() {
                     return newState;
                 });
             }, 300);
+        }
+    };
+
+    // Handle invoice rectification
+    const handleRectify = async (invoice: Invoice) => {
+        try {
+            // Set loading state for this specific invoice
+            setActionLoading(prev => ({...prev, [invoice.invoice_number]: 'rectifying'}));
+            
+            const loadingToast = showLoading("Creating rectification invoice...");
+            
+            // Create both rectification and corrected invoice with proper sequential numbering
+            const { rectificationInvoice, correctedInvoiceTemplate, originalInvoiceUpdated } = await createRectificationPair(invoice);
+            
+            // Save the rectification invoice
+            const rectificationSuccess = await saveInvoice(rectificationInvoice);
+            
+            // Save the updated original invoice (marked as rectified)
+            const originalUpdateSuccess = await saveInvoice(originalInvoiceUpdated);
+            
+            if (rectificationSuccess && originalUpdateSuccess) {
+                // Local state is updated via context now
+                loadingToast.success("Rectification invoice created successfully!");
+                showSuccess("Rectification invoice created. Redirecting to create corrected invoice...");
+                
+                // Navigate to create invoice page with the corrected invoice data
+                // We'll store the template in sessionStorage to pass it to the form
+                sessionStorage.setItem('rectificationTemplate', JSON.stringify(correctedInvoiceTemplate));
+                
+                // Navigate to create invoice page
+                router.push('/create-invoice?rectification=true');
+            } else {
+                loadingToast.error("Failed to create rectification invoice");
+                showError("Failed to create rectification invoice");
+            }
+        } catch (error) {
+            console.error("Error creating rectification invoice:", error);
+            showError("An error occurred while creating the rectification invoice");
+        } finally {
+            // Clear loading state
+            setActionLoading(prev => {
+                const newState = {...prev};
+                delete newState[invoice.invoice_number];
+                return newState;
+            });
         }
     };
 
@@ -492,6 +489,33 @@ export default function Invoices() {
                                 size="sm"
                             >
                                 Grant Permission
+                            </Button>
+                        </div>
+                    )}
+
+                    {isSupported && hasPermission && !isLoading && (
+                        <div className="p-4 mb-5 rounded-lg bg-green-50 text-green-800 border border-green-200 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+                            <div className="flex items-start sm:items-center gap-2">
+                                <CheckCircle className="h-5 w-5 text-green-500 mr-1 flex-shrink-0 mt-0.5 sm:mt-0" />
+                                <div>
+                                    <p className="font-medium">Storage access granted</p>
+                                    <p className="text-sm text-green-700 mt-0.5">Ready to manage invoices. You can change the folder location if needed.</p>
+                                </div>
+                            </div>
+                            <Button
+                                onClick={async () => {
+                                    try {
+                                        await resetDirectoryAccess();
+                                        await requestPermission();
+                                    } catch (error) {
+                                        console.error('Error changing folder:', error);
+                                    }
+                                }}
+                                className="sm:self-start"
+                                variant="outline"
+                                size="sm"
+                            >
+                                Change Folder
                             </Button>
                         </div>
                     )}
@@ -757,15 +781,29 @@ export default function Invoices() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
-                                        {displayedInvoices.map((invoice) => (
+                                        {displayedInvoices.map((invoice) => {
+                                            const isRectificationInvoice = invoice.total < 0;
+                                            const isRectifiedInvoice = invoice.isRectified;
+                                            return (
                                             <tr 
                                                 key={invoice.id} 
-                                                className="hover:bg-gray-50/80 transition-colors"
+                                                className={`hover:bg-gray-50/80 transition-colors ${
+                                                    isRectificationInvoice ? 'bg-red-50' : 
+                                                    isRectifiedInvoice ? 'bg-gray-100 opacity-60' : ''
+                                                }`}
                                             >
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className="text-sm font-medium text-gray-900">
+                                                    <span className={`text-sm font-medium ${
+                                                        isRectificationInvoice ? 'text-red-600' : 
+                                                        isRectifiedInvoice ? 'text-gray-500 line-through' : 'text-gray-900'
+                                                    }`}>
                                                         {invoice.invoice_number}
                                                     </span>
+                                                    {isRectifiedInvoice && (
+                                                        <span className="ml-2 text-xs text-gray-400">
+                                                            (Rectified by #{invoice.rectifiedBy})
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <span className="text-sm text-gray-600">
@@ -778,18 +816,26 @@ export default function Invoices() {
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-right">
-                                                    <span className="text-sm font-medium text-gray-900">
+                                                    <span className={`text-sm font-medium ${
+                                                        isRectificationInvoice ? 'text-red-600' : 'text-gray-900'
+                                                    }`}>
                                                         {formatCurrency(invoice.total)}
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="flex justify-center">
                                                         <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
-                                                            invoice.is_paid 
-                                                                ? 'bg-green-100 text-green-800'
-                                                                : 'bg-amber-100 text-amber-800'
+                                                            isRectificationInvoice 
+                                                                ? 'bg-red-100 text-red-800'
+                                                                : isRectifiedInvoice
+                                                                    ? 'bg-gray-100 text-gray-600'
+                                                                    : invoice.is_paid 
+                                                                        ? 'bg-green-100 text-green-800'
+                                                                        : 'bg-amber-100 text-amber-800'
                                                         }`}>
-                                                            {invoice.is_paid ? 'Paid' : 'Pending'}
+                                                            {isRectificationInvoice ? 'Storno' : 
+                                                             isRectifiedInvoice ? 'Rectified' :
+                                                             invoice.is_paid ? 'Paid' : 'Pending'}
                                                         </span>
                                                     </div>
                                                 </td>
@@ -799,13 +845,17 @@ export default function Invoices() {
                                                             variant="ghost"
                                                             size="icon"
                                                             onClick={() => handleTogglePaidStatus(invoice)}
-                                                            title={invoice.is_paid ? "Mark as Unpaid" : "Mark as Paid"}
+                                                            title={isRectificationInvoice ? "Rectification invoices cannot be marked as paid" : 
+                                                                   isRectifiedInvoice ? "Rectified invoices cannot be marked as paid" :
+                                                                   invoice.is_paid ? "Mark as Unpaid" : "Mark as Paid"}
                                                             className={`h-8 w-8 rounded-full ${
-                                                                invoice.is_paid 
-                                                                    ? 'text-green-600 hover:bg-green-50' 
-                                                                    : 'text-amber-600 hover:bg-amber-50'
+                                                                isRectificationInvoice || isRectifiedInvoice
+                                                                    ? 'text-gray-400 cursor-not-allowed' 
+                                                                    : invoice.is_paid 
+                                                                        ? 'text-green-600 hover:bg-green-50' 
+                                                                        : 'text-amber-600 hover:bg-amber-50'
                                                             } ${actionLoading[invoice.invoice_number] === 'updating' ? 'opacity-70' : ''}`}
-                                                            disabled={Boolean(actionLoading[invoice.invoice_number])}
+                                                            disabled={Boolean(actionLoading[invoice.invoice_number]) || isRectificationInvoice || isRectifiedInvoice}
                                                         >
                                                             {actionLoading[invoice.invoice_number] === 'updating' ? (
                                                                 <RefreshCw className="h-4 w-4 animate-spin" />
@@ -828,6 +878,27 @@ export default function Invoices() {
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
+                                                            onClick={() => handleRectify(invoice)}
+                                                            title={isRectificationInvoice ? "Cannot rectify a rectification invoice" : 
+                                                                   isRectifiedInvoice ? "Cannot rectify an already rectified invoice" :
+                                                                   "Rectify Invoice (Create cancellation and corrected invoice)"}
+                                                            className={`h-8 w-8 rounded-full ${
+                                                                isRectificationInvoice || isRectifiedInvoice
+                                                                    ? 'text-gray-400 cursor-not-allowed' 
+                                                                    : 'text-orange-600 hover:bg-orange-50'
+                                                            } ${actionLoading[invoice.invoice_number] === 'rectifying' ? 'opacity-70' : ''}`}
+                                                            disabled={Boolean(actionLoading[invoice.invoice_number]) || isRectificationInvoice || isRectifiedInvoice}
+                                                        >
+                                                            {actionLoading[invoice.invoice_number] === 'rectifying' ? (
+                                                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                                            ) : (
+                                                                <AlertTriangle className="h-4 w-4" />
+                                                            )}
+                                                        </Button>
+                                                        
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
                                                             onClick={() => handleDelete(invoice.invoice_number)}
                                                             title="Delete Invoice"
                                                             className={`h-8 w-8 rounded-full text-red-600 hover:bg-red-50 ${
@@ -844,7 +915,8 @@ export default function Invoices() {
                                                     </div>
                                                 </td>
                                             </tr>
-                                        ))}
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
