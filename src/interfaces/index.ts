@@ -66,6 +66,8 @@ export interface Invoice {
     updated_at?: Date;
     lastModified: string;
     isDeleted?: boolean;
+    isRectified?: boolean; // Tracks if this invoice has been rectified (cancelled)
+    rectifiedBy?: string; // Invoice number of the rectification invoice
 }
 
 export interface CompanyInfo {

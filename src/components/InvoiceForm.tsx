@@ -11,6 +11,7 @@ import { PlusCircle, Save, Trash } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
     calculateTotal,
+    generateNextInvoiceNumber,
 } from '../utils/invoiceUtils';
 import { InvoiceItem, CustomerData, IssuerData, BankDetails, Invoice, ProductData } from '../interfaces';
 import { useFileSystem } from '../contexts/FileSystemContext';
@@ -68,14 +69,42 @@ export function InvoiceForm({ id, formId, existingInvoice }: InvoiceFormProps) {
     // Generate invoice number if it's a new invoice
     useEffect(() => {
         if (!existingInvoice && !invoiceNumber) {
-            const generateNextInvoiceNumber = async () => {
-                const allInvoices = await loadInvoices();
-                const nextNumber = (allInvoices.length + 1).toString().padStart(3, '0');
+            const generateInvoiceNumber = async () => {
+                const nextNumber = await generateNextInvoiceNumber();
                 setInvoiceNumber(nextNumber);
             };
-            generateNextInvoiceNumber();
+            generateInvoiceNumber();
         }
-    }, [existingInvoice, invoiceNumber, loadInvoices]);
+    }, [existingInvoice, invoiceNumber]);
+
+    // Check for rectification template in sessionStorage
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('rectification') === 'true') {
+            const rectificationTemplate = sessionStorage.getItem('rectificationTemplate');
+            if (rectificationTemplate) {
+                try {
+                    const template = JSON.parse(rectificationTemplate);
+                    // Pre-populate form with rectified invoice data
+                    setInvoiceNumber(template.invoice_number);
+                    setInvoiceDate(new Date(template.invoice_date));
+                    setDueDate(new Date(template.due_date));
+                    setNotes(template.notes || '');
+                    setTaxRate(template.tax_rate || 19);
+                    setTaxExemptionReason(template.tax_exemption_reason || '');
+                    setClientVatId(template.client_vat_id || '');
+                    setClientVatExempt(template.client_vat_exempt || false);
+                    setCustomer(template.customer);
+                    setItems(template.items || [{ name: '', quantity: 1, price: 0 }]);
+                    
+                    // Clear the template from sessionStorage after loading
+                    sessionStorage.removeItem('rectificationTemplate');
+                } catch (error) {
+                    console.error('Error loading rectification template:', error);
+                }
+            }
+        }
+    }, []);
 
     // Load saved data
     useEffect(() => {
@@ -197,6 +226,8 @@ export function InvoiceForm({ id, formId, existingInvoice }: InvoiceFormProps) {
                 bank_details: bankDetails,
                 is_paid: existingInvoice?.is_paid || false,
                 lastModified: new Date().toISOString(),
+                isRectified: existingInvoice?.isRectified || false,
+                rectifiedBy: existingInvoice?.rectifiedBy,
             };
 
             // Save invoice using the new unified saveInvoice function
@@ -446,9 +477,10 @@ export function InvoiceForm({ id, formId, existingInvoice }: InvoiceFormProps) {
                                 <FormInput
                                     label={index === 0 ? "Quantity" : undefined}
                                     type="number"
-                                    min="1"
+                                    step="0.01"
+                                    min="0.01"
                                     value={item.quantity}
-                                    onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value))}
+                                    onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value) || 0)}
                                     required
                                 />
                             </div>

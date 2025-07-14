@@ -10,11 +10,13 @@ import {
     deleteInvoiceFile,
     initializeFileSystem,
     getSavedDirectoryHandle,
-    setDirectoryHandle as setFileSystemDirectoryHandle
+    setDirectoryHandle as setFileSystemDirectoryHandle,
+    resetDirectoryAccess
 } from '../utils/fileSystemStorage';
 import { Invoice } from '../interfaces';
 import { setDirectoryHandle as setCustomerDirectoryHandle } from '../utils/customerUtils';
 import { setDirectoryHandle as setProductDirectoryHandle } from '../utils/productUtils';
+import { setDirectoryHandle as setInvoiceDirectoryHandle, loadInvoices as loadInvoicesFromUtils, deleteInvoice as deleteInvoiceFromUtils, saveInvoice as saveInvoiceToUtils } from '../utils/invoiceUtils';
 
 interface FileSystemContextType {
     isSupported: boolean;
@@ -25,6 +27,7 @@ interface FileSystemContextType {
     directoryRequested: boolean;
     invoices: Invoice[];
     requestPermission: () => Promise<boolean>;
+    resetDirectoryAccess: () => Promise<void>;
     saveInvoices: (invoices: Invoice[]) => Promise<boolean>;
     saveInvoice: (invoice: Invoice) => Promise<boolean>;
     loadInvoices: () => Promise<Invoice[]>;
@@ -80,6 +83,7 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
                 setFileSystemDirectoryHandle(currentHandle);
                 setCustomerDirectoryHandle(currentHandle);
                 setProductDirectoryHandle(currentHandle);
+                setInvoiceDirectoryHandle(currentHandle);
             }
         } catch (error) {
             console.error("Error sharing directory handle:", error);
@@ -90,7 +94,7 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
     const refreshInvoicesInternal = React.useCallback(async (): Promise<void> => {
         setIsLoading(true);
         try {
-            const loadedInvoices = await loadInvoicesFromFiles();
+            const loadedInvoices = await loadInvoicesFromUtils();
             setInvoices(loadedInvoices);
         } catch (error) {
             console.error("Error loading invoices:", error);
@@ -98,6 +102,18 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
             setIsLoading(false);
         }
     }, []);
+
+    // Reset directory access
+    const resetDirectoryAccessInternal = async (): Promise<void> => {
+        try {
+            await resetDirectoryAccess();
+            setHasPermission(false);
+            setDirectoryRequested(false);
+            setInvoices([]);
+        } catch (error) {
+            console.error('Error resetting directory access:', error);
+        }
+    };
 
     // Initialize on client side only
     useEffect(() => {
@@ -156,27 +172,27 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
     const saveInvoice = async (invoice: Invoice): Promise<boolean> => {
         setIsSaving(true);
         try {
-            const result = await saveInvoiceToFile(invoice);
+            const savedInvoice = await saveInvoiceToUtils(invoice);
 
-            if (result) {
+            if (savedInvoice) {
                 // Update local state - replace or add invoice
                 setInvoices(prev => {
-                    const index = prev.findIndex(inv => inv.invoice_number === invoice.invoice_number);
+                    const index = prev.findIndex(inv => inv.invoice_number === savedInvoice.invoice_number);
                     if (index >= 0) {
                         // Replace existing invoice
                         const updated = [...prev];
-                        updated[index] = invoice;
+                        updated[index] = savedInvoice;
                         return updated;
                     } else {
                         // Add new invoice
-                        return [...prev, invoice];
+                        return [...prev, savedInvoice];
                     }
                 });
                 
                 // If Google Drive backup is enabled, also save there
                 if (googleDriveBackup.isBackupEnabled && googleDriveBackup.saveInvoice !== null) {
                     try {
-                        await googleDriveBackup.saveInvoice(invoice);
+                        await googleDriveBackup.saveInvoice(savedInvoice);
                     } catch (error) {
                         console.error("Error backing up invoice to Google Drive:", error);
                         // We don't want to fail the operation if just backup fails
@@ -184,7 +200,7 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
                 }
             }
 
-            return result;
+            return !!savedInvoice;
         } catch (error) {
             console.error("Error saving invoice:", error);
             return false;
@@ -198,23 +214,35 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
         setIsSaving(true);
         try {
             let success = true;
+            const savedInvoices: Invoice[] = [];
+            
             // Save each invoice individually
             for (const invoice of invoicesToSave) {
-                const result = await saveInvoiceToFile(invoice);
-                if (!result) {
-                    success = false;
-                } else if (googleDriveBackup.isBackupEnabled && googleDriveBackup.saveInvoice !== null) {
-                    // Also backup to Google Drive if enabled
-                    try {
-                        await googleDriveBackup.saveInvoice(invoice);
-                    } catch (error) {
-                        console.error("Error backing up invoice to Google Drive:", error);
-                        // We don't want to fail the operation if just backup fails
+                try {
+                    const savedInvoice = await saveInvoiceToUtils(invoice);
+                    if (savedInvoice) {
+                        savedInvoices.push(savedInvoice);
+                        
+                        if (googleDriveBackup.isBackupEnabled && googleDriveBackup.saveInvoice !== null) {
+                            // Also backup to Google Drive if enabled
+                            try {
+                                await googleDriveBackup.saveInvoice(savedInvoice);
+                            } catch (error) {
+                                console.error("Error backing up invoice to Google Drive:", error);
+                                // We don't want to fail the operation if just backup fails
+                            }
+                        }
+                    } else {
+                        success = false;
                     }
+                } catch (error) {
+                    console.error("Error saving invoice:", error);
+                    success = false;
                 }
             }
+            
             if (success) {
-                setInvoices(invoicesToSave);
+                setInvoices(savedInvoices);
             }
             return success;
         } catch (error) {
@@ -229,7 +257,7 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
     const loadInvoices = async (): Promise<Invoice[]> => {
         setIsLoading(true);
         try {
-            const loadedInvoices = await loadInvoicesFromFiles();
+            const loadedInvoices = await loadInvoicesFromUtils();
             setInvoices(loadedInvoices);
             return loadedInvoices;
         } catch (error) {
@@ -243,7 +271,14 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
     // Delete invoice
     const deleteInvoice = async (invoiceNumber: string): Promise<boolean> => {
         try {
-            const success = await deleteInvoiceFile(invoiceNumber);
+            // Find the invoice by number first
+            const invoiceToDelete = invoices.find(inv => inv.invoice_number === invoiceNumber);
+            if (!invoiceToDelete) {
+                console.error(`Invoice with number ${invoiceNumber} not found.`);
+                return false;
+            }
+
+            const success = await deleteInvoiceFromUtils(invoiceToDelete.id);
             if (success) {
                 // Update local state
                 setInvoices(prevInvoices => prevInvoices.filter(inv => inv.invoice_number !== invoiceNumber));
@@ -293,6 +328,7 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
         directoryRequested,
         invoices,
         requestPermission,
+        resetDirectoryAccess: resetDirectoryAccessInternal,
         saveInvoices,
         saveInvoice,
         loadInvoices,

@@ -7,14 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from '../../components/ui/button';
 import { 
     FileText, ShieldAlert, AlertTriangle, ArrowLeft, 
-    Save, PlusCircle, Receipt, HardDrive, Download 
+    Save, PlusCircle, Receipt, HardDrive, Download, CheckCircle 
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
 
 export default function CreateInvoicePage() {
-    const { isSupported, hasPermission, requestPermission } = useFileSystem();
+    const { isSupported, hasPermission, requestPermission, resetDirectoryAccess } = useFileSystem();
     const [permissionChecked, setPermissionChecked] = useState(false);
 
     // Check if permission is granted
@@ -78,6 +78,32 @@ export default function CreateInvoicePage() {
                             >
                                 <HardDrive className="mr-2 h-4 w-4" />
                                 Grant Access
+                            </Button>
+                        </AlertDescription>
+                    </Alert>
+                )}
+
+                {isSupported && hasPermission && permissionChecked && (
+                    <Alert variant="default" className="mb-4 bg-green-50 border-green-200 text-green-800">
+                        <CheckCircle className="h-4 w-4" />
+                        <AlertTitle>Storage Access Granted</AlertTitle>
+                        <AlertDescription className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-1">
+                            <span>Ready to create and save invoices. You can change the folder location if needed.</span>
+                            <Button
+                                onClick={async () => {
+                                    try {
+                                        await resetDirectoryAccess();
+                                        await requestPermission();
+                                    } catch (error) {
+                                        console.error('Error changing folder:', error);
+                                    }
+                                }}
+                                variant="outline"
+                                size="sm"
+                                className="bg-green-100 hover:bg-green-200 text-green-900 border-green-300"
+                            >
+                                <HardDrive className="mr-2 h-4 w-4" />
+                                Change Folder
                             </Button>
                         </AlertDescription>
                     </Alert>

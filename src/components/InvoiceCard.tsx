@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { MoreHorizontal, FileText, Mail, Trash2, Download, Eye } from 'lucide-react';
+import { MoreHorizontal, FileText, Mail, Trash2, Download, Eye, AlertTriangle } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/utils/formatters';
 import { Invoice } from '@/interfaces';
 import { cn } from '@/lib/utils';
@@ -29,10 +29,12 @@ interface InvoiceCardProps {
     onDelete?: (invoiceNumber: string) => Promise<void>;
     onViewPdf?: (invoice: Invoice) => Promise<void>;
     onSendEmail?: (invoice: Invoice) => Promise<void>;
+    onRectify?: (invoice: Invoice) => Promise<void>;
 }
 
-export function InvoiceCard({ invoice, onDelete, onViewPdf, onSendEmail }: InvoiceCardProps) {
+export function InvoiceCard({ invoice, onDelete, onViewPdf, onSendEmail, onRectify }: InvoiceCardProps) {
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isRectifying, setIsRectifying] = useState(false);
 
     // Calculate total
     const subtotal = invoice.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
@@ -44,6 +46,7 @@ export function InvoiceCard({ invoice, onDelete, onViewPdf, onSendEmail }: Invoi
 
     // Get invoice status
     const getInvoiceStatus = () => {
+        if (invoice.isRectified) return { label: 'Rectified', color: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' };
         if (invoice.is_paid) return { label: 'Paid', color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' };
         if (isOverdue) return { label: 'Overdue', color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' };
         return { label: 'Pending', color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' };
@@ -71,14 +74,41 @@ export function InvoiceCard({ invoice, onDelete, onViewPdf, onSendEmail }: Invoi
         }
     };
 
+    // Handle rectification confirmation
+    const handleRectify = async () => {
+        if (!onRectify) return;
+
+        const confirmed = await showConfirmation(
+            `Are you sure you want to rectify invoice #${invoice.invoice_number}?\n\nThis will create a cancellation invoice with negative amounts and then open the form to create a corrected invoice.`,
+            'Rectify Invoice',
+            'Cancel'
+        );
+
+        if (confirmed) {
+            setIsRectifying(true);
+            try {
+                await onRectify(invoice);
+            } finally {
+                setIsRectifying(false);
+            }
+        }
+    };
+
     return (
-        <Card className="w-full">
+        <Card className={`w-full ${invoice.isRectified ? 'opacity-60 bg-gray-50' : ''}`}>
             <CardHeader className="pb-2">
                 <div className="flex justify-between items-start">
                     <div>
-                        <CardTitle className="text-lg">{invoice.client_name}</CardTitle>
-                        <CardDescription className="mt-1">
+                        <CardTitle className={`text-lg ${invoice.isRectified ? 'text-gray-500 line-through' : ''}`}>
+                            {invoice.client_name}
+                        </CardTitle>
+                        <CardDescription className={`mt-1 ${invoice.isRectified ? 'text-gray-400' : ''}`}>
                             Invoice #{invoice.invoice_number}
+                            {invoice.isRectified && (
+                                <span className="block text-xs text-gray-400 mt-1">
+                                    Rectified by #{invoice.rectifiedBy}
+                                </span>
+                            )}
                         </CardDescription>
                     </div>
                     <Badge className={cn("ml-2", status.color)}>
@@ -146,12 +176,40 @@ export function InvoiceCard({ invoice, onDelete, onViewPdf, onSendEmail }: Invoi
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuItem asChild>
-                                <Link href={`/invoices/${invoice.invoice_number}/edit`}>
-                                    <FileText className="h-4 w-4 mr-2" />
-                                    Edit Invoice
-                                </Link>
+                            <DropdownMenuItem 
+                                asChild={!invoice.isRectified}
+                                disabled={invoice.isRectified}
+                                className={invoice.isRectified ? 'text-gray-400 cursor-not-allowed' : ''}
+                            >
+                                {invoice.isRectified ? (
+                                    <span>
+                                        <FileText className="h-4 w-4 mr-2" />
+                                        Cannot edit rectified invoice
+                                    </span>
+                                ) : (
+                                    <Link href={`/invoices/${invoice.invoice_number}/edit`}>
+                                        <FileText className="h-4 w-4 mr-2" />
+                                        Edit Invoice
+                                    </Link>
+                                )}
                             </DropdownMenuItem>
+
+                            {onRectify && (
+                                <DropdownMenuItem
+                                    onClick={handleRectify}
+                                    disabled={isRectifying || invoice.isRectified}
+                                    className={`${
+                                        invoice.isRectified 
+                                            ? 'text-gray-400 cursor-not-allowed' 
+                                            : 'text-orange-600 focus:text-orange-600'
+                                    }`}
+                                >
+                                    <AlertTriangle className="h-4 w-4 mr-2" />
+                                    {isRectifying ? 'Rectifying...' : 
+                                     invoice.isRectified ? 'Cannot rectify rectified invoice' :
+                                     'Rectify Invoice'}
+                                </DropdownMenuItem>
+                            )}
 
                             {onSendEmail && (
                                 <DropdownMenuItem onClick={() => onSendEmail(invoice)}>

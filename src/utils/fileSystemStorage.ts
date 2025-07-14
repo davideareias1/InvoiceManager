@@ -757,9 +757,9 @@ export async function getDirectoryHandle(directoryName: string, baseHandle?: Fil
 }
 
 /**
- * Clears the saved directory handle from IndexedDB.
+ * Clear the saved directory handle from IndexedDB
  */
-async function clearSavedDirectoryHandle(): Promise<void> {
+export async function clearSavedDirectoryHandle(): Promise<void> {
     if (typeof window !== 'undefined') {
         try {
             const db = await openDatabase();
@@ -775,4 +775,15 @@ async function clearSavedDirectoryHandle(): Promise<void> {
             console.error('Failed to clear saved directory handle:', error);
         }
     }
+}
+
+/**
+ * Reset directory access by clearing the saved handle and current handle
+ */
+export async function resetDirectoryAccess(): Promise<void> {
+    // Clear the saved handle from IndexedDB
+    await clearSavedDirectoryHandle();
+    
+    // Clear the current handle in memory
+    directoryHandle = null;
 } 

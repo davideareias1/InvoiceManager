@@ -11,6 +11,14 @@ export function formatCurrency(amount: number): string {
 }
 
 /**
+ * Format a quantity number (removes unnecessary decimal places)
+ */
+export function formatQuantity(quantity: number): string {
+    // Remove trailing zeros and unnecessary decimal points
+    return quantity % 1 === 0 ? quantity.toString() : quantity.toFixed(2).replace(/\.?0+$/, '');
+}
+
+/**
  * Format a date string as DD.MM.YYYY
  */
 export function formatDate(dateString: string): string {
@@ -54,8 +62,10 @@ export function formatDateForInput(dateString: string): string {
 
 /**
  * Generate a unique invoice number based on date and time
+ * @deprecated Use generateNextInvoiceNumber from invoiceUtils instead
  */
 export function generateInvoiceNumber(): string {
+    console.warn('generateInvoiceNumber from formatters is deprecated. Use generateNextInvoiceNumber from invoiceUtils instead.');
     const now = new Date();
     const year = now.getFullYear().toString();
     const month = (now.getMonth() + 1).toString().padStart(2, '0');

@@ -58,6 +58,7 @@ export default function HomePage() {
         isInitialized: isFileSystemInitialized,
         hasPermission,
         requestPermission,
+        resetDirectoryAccess,
         invoices,
         loadInvoices
     } = useFileSystem();
@@ -227,6 +228,21 @@ export default function HomePage() {
         }
     };
 
+    const handleChangeFolderLocation = async () => {
+        setIsFileSystemRequesting(true);
+        try {
+            await resetDirectoryAccess();
+            // After reset, request new permission
+            await requestPermission();
+            showSuccess("Folder location changed successfully.");
+        } catch (err) {
+            console.error("Error changing folder location:", err);
+            showError("Failed to change folder location.");
+        } finally {
+            setTimeout(() => setIsFileSystemRequesting(false), 300);
+        }
+    };
+
     const handleSignOutDrive = async () => {
         setIsDriveConnecting(true); // Show visual feedback during sign out
         try {
@@ -308,6 +324,17 @@ export default function HomePage() {
                                 disabled={isFileSystemRequesting}
                             >
                                 Grant Access
+                            </Button>
+                        )}
+                        {!isSupported ? null : hasPermission && !isFileSystemRequesting && !isFileSystemLoading && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={handleChangeFolderLocation}
+                                className="w-full"
+                                disabled={isFileSystemRequesting}
+                            >
+                                Change Folder
                             </Button>
                         )}
                         {isFileSystemRequesting && (

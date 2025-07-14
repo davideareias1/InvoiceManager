@@ -4,7 +4,7 @@ import { jsPDF } from 'jspdf';
 // Import jspdf-autotable
 import autoTable from 'jspdf-autotable';
 import { Invoice, InvoiceItem, CompanyInfo } from '../interfaces';
-import { formatCurrency, formatDate } from './formatters';
+import { formatCurrency, formatDate, formatQuantity } from './formatters';
 
 // Global settings for PDF generation
 const PDF_MARGIN_LEFT = 15;
@@ -34,7 +34,10 @@ export async function generateInvoicePDF(
     // Add invoice title and information at the top of the page
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
-    doc.text(`Rechnung #${invoice.invoice_number}`, doc.internal.pageSize.width - PDF_MARGIN_RIGHT, PDF_MARGIN_TOP + 10, { align: 'right' });
+    // Check if this is a rectification invoice (negative total indicates cancellation)
+    const isRectificationInvoice = invoice.total < 0;
+    const invoiceTitle = isRectificationInvoice ? 'Stornorechnung' : 'Rechnung';
+    doc.text(`${invoiceTitle} #${invoice.invoice_number}`, doc.internal.pageSize.width - PDF_MARGIN_RIGHT, PDF_MARGIN_TOP + 10, { align: 'right' });
     
     // Add invoice date and due date below the title
     doc.setFont('helvetica', 'normal');
@@ -108,27 +111,36 @@ function addSimpleTable(doc: jsPDF, items: InvoiceItem[]): void {
         // Position number
         doc.text((index + 1).toString(), PDF_MARGIN_LEFT, y);
 
-        // Description with proper wrapping
-        const descriptionX = PDF_MARGIN_LEFT + columnWidths.pos + 5;
-        const wrappedText = doc.splitTextToSize(item.description || item.name, columnWidths.description);
+        const isCancellationNotice = item.name.startsWith('Stornierung der Rechnung') && item.price === 0;
+        let lineHeight = 5; // Default line height for a single line item
 
-        // Print each line of wrapped text
-        wrappedText.forEach((line: string, lineIndex: number) => {
-            doc.text(line, descriptionX, y + (lineIndex * 5));
-        });
+        if (isCancellationNotice) {
+            // Special handling for cancellation notice
+            const descriptionX = PDF_MARGIN_LEFT + columnWidths.pos + 5;
+            doc.setFont('helvetica', 'italic');
+            doc.text(item.name, descriptionX, y);
+            doc.setFont('helvetica', 'normal');
+        } else {
+            // Description with proper wrapping
+            const descriptionX = PDF_MARGIN_LEFT + columnWidths.pos + 5;
+            const wrappedText = doc.splitTextToSize(item.description || item.name, columnWidths.description);
 
-        // Calculate the maximum height needed for this row
-        const lineHeight = Math.max(wrappedText.length * 5, 5);
+            wrappedText.forEach((line: string, lineIndex: number) => {
+                doc.text(line, descriptionX, y + (lineIndex * 5));
+            });
 
-        // Right-aligned quantity, unit price, and total price
-        const quantityX = PDF_MARGIN_LEFT + columnWidths.pos + columnWidths.description + columnWidths.quantity + 5;
-        const unitPriceX = quantityX + columnWidths.quantity;
-        const totalPriceX = doc.internal.pageSize.width - PDF_MARGIN_RIGHT;
+            lineHeight = Math.max(wrappedText.length * 5, 5);
 
-        doc.text(item.quantity.toString(), quantityX, y, { align: 'right' });
-        doc.text(formatCurrency(item.price), unitPriceX, y, { align: 'right' });
-        const itemTotal = item.quantity * item.price;
-        doc.text(formatCurrency(itemTotal), totalPriceX, y, { align: 'right' });
+            // Right-aligned quantity, unit price, and total price
+            const quantityX = PDF_MARGIN_LEFT + columnWidths.pos + columnWidths.description + columnWidths.quantity + 5;
+            const unitPriceX = quantityX + columnWidths.quantity;
+            const totalPriceX = doc.internal.pageSize.width - PDF_MARGIN_RIGHT;
+
+            doc.text(formatQuantity(item.quantity), quantityX, y, { align: 'right' });
+            doc.text(formatCurrency(item.price), unitPriceX, y, { align: 'right' });
+            const itemTotal = item.quantity * item.price;
+            doc.text(formatCurrency(itemTotal), totalPriceX, y, { align: 'right' });
+        }
 
         // Add light gray separator line between items
         if (index < items.length - 1) {
@@ -136,24 +148,26 @@ function addSimpleTable(doc: jsPDF, items: InvoiceItem[]): void {
             doc.setLineWidth(0.1);
             doc.line(
                 PDF_MARGIN_LEFT,
-                y + lineHeight + 2,
+                y + lineHeight + 4, // Position line with more space
                 doc.internal.pageSize.width - PDF_MARGIN_RIGHT,
-                y + lineHeight + 2
+                y + lineHeight + 4
             );
         }
 
-        // Adjust y position for next item
-        y += lineHeight + 5;
+        // Adjust y position for the next item with more spacing
+        y += lineHeight + 8;
     });
 
     // Draw a final line at the bottom - make it slightly thicker
     doc.setDrawColor(100, 100, 100);
     doc.setLineWidth(0.3);
+    // Position the final line correctly based on whether there were items
+    const finalLineY = items.length > 0 ? y - 4 : startY + 3;
     doc.line(
         PDF_MARGIN_LEFT,
-        y + 2,
+        finalLineY,
         doc.internal.pageSize.width - PDF_MARGIN_RIGHT,
-        y + 2
+        finalLineY
     );
 }
 
