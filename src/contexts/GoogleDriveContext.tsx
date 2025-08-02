@@ -39,7 +39,7 @@ const GoogleDriveContext = createContext<GoogleDriveContextType | undefined>(und
 
 export function useGoogleDrive() {
     const context = useContext(GoogleDriveContext);
-    if (context === undefined) {
+    if (!context) {
         throw new Error('useGoogleDrive must be used within a GoogleDriveProvider');
     }
     return context;
@@ -80,10 +80,12 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         return true;
     }, []);
 
+    // Initialize Google Drive API
     useEffect(() => {
         const initialize = async () => {
             const supported = isGoogleDriveSupported();
             setIsSupported(supported);
+            
             if (!supported) {
                 setConnectionStatusMessage('Google Drive not supported or credentials missing.');
                 setIsInitialized(true);
@@ -97,13 +99,18 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
                 
                 const authStatus = await isGoogleDriveAuthenticated();
                 setIsAuthenticated(authStatus);
-                setConnectionStatusMessage(authStatus ? 'Connected.' : 'Ready to connect.');
+                setConnectionStatusMessage(authStatus ? 'Connected' : 'Ready to connect');
 
+                // Load backup setting from localStorage
                 const backupEnabled = localStorage.getItem('google-drive-backup-enabled') === 'true';
                 setIsBackupEnabled(backupEnabled && authStatus);
+                
+                setConnectionStatusMessage(authStatus ? 'Connected' : 'Ready to connect');
             } catch (error) {
                 console.error('Error during Google Drive initialization:', error);
-                setConnectionStatusMessage('Error during initialization.');
+                setConnectionStatusMessage('Error during initialization');
+                setIsAuthenticated(false);
+                setIsBackupEnabled(false);
             } finally {
                 setIsInitialized(true);
                 setIsLoading(false);
@@ -111,18 +118,21 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         };
 
         initialize();
+    }, []); // Only run once on mount
 
-        const interval = setInterval(async () => {
-            const authStatus = await isGoogleDriveAuthenticated();
-            if(authStatus !== isAuthenticated) setIsAuthenticated(authStatus);
+    // Monitor sync status
+    useEffect(() => {
+        const interval = setInterval(() => {
             const syncStatus = getSyncStatus();
-            if(syncStatus.isSyncing !== isSyncing) setIsSyncing(syncStatus.isSyncing);
-        }, 2000); // Periodically check auth and sync status
+            if (syncStatus.isSyncing !== isSyncing) {
+                setIsSyncing(syncStatus.isSyncing);
+            }
+        }, 1000); // Check sync status every second
 
         return () => clearInterval(interval);
+    }, [isSyncing]);
 
-    }, [isAuthenticated, isSyncing]);
-
+    // Register backup functions with file system context
     useEffect(() => {
         if (!fileSystemChildContext || !isInitialized) return;
 
@@ -136,6 +146,7 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         fileSystemChildContext.registerGoogleDriveBackup(backupConfig);
     }, [isBackupEnabled, isAuthenticated, isInitialized, fileSystemChildContext, saveInvoice, deleteInvoice, saveCustomer, saveProduct]);
 
+    // Save backup setting to localStorage
     useEffect(() => {
         if (isInitialized) {
             localStorage.setItem('google-drive-backup-enabled', isBackupEnabled.toString());
@@ -143,27 +154,55 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
     }, [isBackupEnabled, isInitialized]);
 
     const requestPermission = useCallback(async (): Promise<void> => {
-        if (!isSupported) return;
+        if (!isSupported) {
+            throw new Error('Google Drive not supported');
+        }
+        
         setIsLoading(true);
+        setConnectionStatusMessage('Requesting authorization...');
+        
         try {
             await requestGoogleDriveAuthorization();
-            // Auth state will be updated by the periodic check
+            
+            // Verify authentication was successful
+            const authStatus = await isGoogleDriveAuthenticated();
+            setIsAuthenticated(authStatus);
+            
+            if (authStatus) {
+                setConnectionStatusMessage('Connected');
+                setIsBackupEnabled(true); // Automatically enable backup after successful auth
+            } else {
+                setConnectionStatusMessage('Authorization failed');
+                throw new Error('Authorization failed');
+            }
         } catch (error) {
             console.error('Error requesting Google Drive authorization:', error);
+            setConnectionStatusMessage('Authorization failed');
+            setIsAuthenticated(false);
+            setIsBackupEnabled(false);
+            throw error;
         } finally {
             setIsLoading(false);
         }
     }, [isSupported]);
 
     const signOut = useCallback(async (): Promise<void> => {
-        if (!isSupported || !isAuthenticated) return;
-        await signOutGoogleDrive();
-        setIsAuthenticated(false);
-        setIsBackupEnabled(false);
-    }, [isSupported, isAuthenticated]);
+        if (!isSupported) return;
+        
+        try {
+            await signOutGoogleDrive();
+            setIsAuthenticated(false);
+            setIsBackupEnabled(false);
+            setConnectionStatusMessage('Signed out');
+        } catch (error) {
+            console.error('Error signing out of Google Drive:', error);
+        }
+    }, [isSupported]);
 
     const backup = useCallback(async (): Promise<void> => {
-        if (!isSupported || !isAuthenticated) return;
+        if (!isSupported || !isAuthenticated) {
+            throw new Error('Google Drive not available or not authenticated');
+        }
 
         setSyncProgress({ current: 0, total: 0 });
         const handleProgress = (progress: { current: number, total: number }) => {
@@ -174,6 +213,7 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
             await backupAllDataToDrive(handleProgress);
         } catch (error) {
             console.error('Error backing up all files to Google Drive:', error);
+            throw error;
         } finally {
             setSyncProgress(null);
         }
