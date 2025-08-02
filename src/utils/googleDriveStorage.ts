@@ -246,7 +246,7 @@ async function findOrCreateFolder(name: string, parentId?: string): Promise<stri
                 console.warn(`Found ${response.result.files.length} folders named "${name}". Cleaning up duplicates.`);
                 for (let i = 1; i < response.result.files.length; i++) {
                     try {
-                        await gapi.client.drive.files.delete({ fileId: response.result.files[i].id! });
+                        await (gapi.client.drive.files as any).delete({ fileId: response.result.files[i].id! });
                         console.log(`Deleted duplicate folder: ${response.result.files[i].id}`);
                     } catch (error) {
                         console.error('Error deleting duplicate folder:', error);
@@ -376,7 +376,7 @@ async function uploadFile(folderId: string, item: { id: string } & any, existing
 
 async function deleteFileFromDrive(fileId: string): Promise<void> {
     try {
-        await gapi.client.drive.files.delete({ fileId });
+        await (gapi.client.drive.files as any).delete({ fileId });
         console.log(`Deleted file from Drive: ${fileId}`);
     } catch (error) {
         console.error('Error deleting file from Drive:', error);
