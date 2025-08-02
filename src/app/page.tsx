@@ -248,7 +248,8 @@ export default function HomePage() {
             console.error('Error signing out of Google Drive:', error);
             showError('Failed to disconnect from Google Drive.');
         } finally {
-             // Let useEffect handle hiding the connecting state based on auth status
+            // Always reset the connecting state after sign out attempt
+            setTimeout(() => setIsDriveConnecting(false), 1000);
         }
     };
 
