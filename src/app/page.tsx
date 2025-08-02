@@ -99,14 +99,13 @@ export default function HomePage() {
 
     // Manage Google Drive connection state visual
     useEffect(() => {
-        // Keep showing connecting state until drive is initialized AND auth state is known
-        if (isDriveInitialized && isDriveAuthenticated !== undefined && !isDriveLoading) {
-            const timer = setTimeout(() => setIsDriveConnecting(false), 300); // Short delay for smoother transition
-            return () => clearTimeout(timer);
-        } else if (!isDriveLoading) { // If not loading but still not initialized/authenticated, show connecting
-             setIsDriveConnecting(true);
+        // Show connecting state only when actually loading/initializing
+        if (isDriveLoading || !isDriveInitialized) {
+            setIsDriveConnecting(true);
+        } else {
+            setIsDriveConnecting(false);
         }
-    }, [isDriveInitialized, isDriveAuthenticated, isDriveLoading]);
+    }, [isDriveInitialized, isDriveLoading]);
 
     // Calculate analytics data
     const analytics = useMemo(() => {
@@ -188,30 +187,27 @@ export default function HomePage() {
 
     const handleToggleBackup = async (enabled: boolean) => {
         if (enabled && !isDriveAuthenticated) {
-            setIsDriveConnecting(true); // Show connection visual
-            await requestDrivePermission();
-            // The context will handle the state update after permission is granted or denied.
-            // We can optimisticly set the switch, or let the context's periodic check handle it.
-            // For better UX, we can check auth status again right after.
-            const granted = await isGoogleDriveAuthenticated();
-            if (granted) {
-                setIsBackupEnabled(true);
-                showSuccess('Google Drive connected.');
-            } else {
-                setIsBackupEnabled(false); // Ensure switch is off if permission was denied
-                showError('Failed to authorize Google Drive access');
+            // Need to authenticate first
+            setIsDriveConnecting(true);
+            try {
+                await requestDrivePermission();
+                // The context automatically enables backup after successful auth
+                showSuccess('Google Drive connected and backup enabled.');
+            } catch (error) {
+                console.error('Failed to connect to Google Drive:', error);
+                showError('Failed to connect to Google Drive. Please try again.');
+            } finally {
+                setIsDriveConnecting(false);
             }
-            setIsDriveConnecting(false); // Hide connection visual on failure
-
         } else {
-             setIsBackupEnabled(enabled); // Directly toggle if already authenticated or disabling
-             if (!enabled && isDriveAuthenticated) {
-                 // Optionally sign out if disabling backup while authenticated
-                 // signOutDrive(); // Consider if this is desired UX
-                 showSuccess('Google Drive backup disabled.');
-             }
+            // Just toggle the backup setting
+            setIsBackupEnabled(enabled);
+            if (enabled) {
+                showSuccess('Google Drive backup enabled.');
+            } else {
+                showSuccess('Google Drive backup disabled.');
+            }
         }
-
     };
 
      const handleRequestFileSystemPermission = async () => {
