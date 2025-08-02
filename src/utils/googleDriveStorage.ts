@@ -41,6 +41,10 @@ let folderIds: Record<string, string> = {};
 let isSyncing = false;
 let isInitialized = false;
 
+// Add cache for folder creation to prevent race conditions
+let folderCreationCache = new Map<string, Promise<string>>();
+let folderIdCache = new Map<string, string>();
+
 // --- Initialization and Authentication ---
 
 export function isGoogleDriveSupported(): boolean {
@@ -225,6 +229,8 @@ export function signOutGoogleDrive(): Promise<void> {
             }
             localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
             folderIds = {};
+            folderCreationCache.clear();
+            folderIdCache.clear();
             console.log('Google Drive sign out completed');
         } catch (error) {
             console.error('Error during Google Drive sign out:', error);
@@ -283,55 +289,76 @@ function generateFilename(item: any, itemType: 'invoice' | 'customer' | 'product
 }
 
 async function findOrCreateFolder(name: string, parentId?: string): Promise<string> {
-    // First, try to find existing folder
-    let query = `mimeType='application/vnd.google-apps.folder' and name='${name}' and trashed=false`;
-    if (parentId) {
-        query += ` and '${parentId}' in parents`;
+    // Use a unique cache key that includes both name and parent ID
+    const cacheKey = `${name}:${parentId || 'root'}`;
+    
+    // Check cache first
+    const cachedFolderId = folderIdCache.get(cacheKey);
+    if (cachedFolderId) {
+        return cachedFolderId;
     }
 
-    try {
-        const response = await gapi.client.drive.files.list({ 
-            q: query, 
-            fields: 'files(id, name)',
-            pageSize: 10 // Get a few results to handle potential duplicates
-        });
-        
-        if (response.result.files && response.result.files.length > 0) {
-            // Return the first matching folder
-            const folderId = response.result.files[0].id!;
-            
-            // If we found multiple folders with the same name, schedule cleanup but don't block
-            if (response.result.files.length > 1) {
-                console.warn(`Found ${response.result.files.length} folders named "${name}". Scheduling cleanup for duplicates.`);
-                
-                // Schedule cleanup in the background to avoid blocking uploads
-                setTimeout(async () => {
-                    await cleanupDuplicateFolders(response.result.files!, folderId);
-                }, 100);
-            }
-            
-            return folderId;
+    // Check if a folder creation is already in progress for this name/parent combination
+    const existingPromise = folderCreationCache.get(cacheKey);
+    if (existingPromise) {
+        return await existingPromise;
+    }
+
+    const newPromise = (async () => {
+        // First, try to find existing folder
+        let query = `mimeType='application/vnd.google-apps.folder' and name='${name}' and trashed=false`;
+        if (parentId) {
+            query += ` and '${parentId}' in parents`;
         }
-    } catch (error) {
-        console.error('Error searching for folder:', error);
-    }
 
-    // Create new folder if not found
-    try {
-        const metadata = { 
-            name, 
-            mimeType: 'application/vnd.google-apps.folder',
-            ...(parentId && { parents: [parentId] })
-        };
-        const newFolder = await gapi.client.drive.files.create({ 
-            resource: metadata, 
-            fields: 'id' 
-        });
-        return newFolder.result.id!;
-    } catch (error) {
-        console.error('Error creating folder:', error);
-        throw error;
-    }
+        try {
+            const response = await gapi.client.drive.files.list({ 
+                q: query, 
+                fields: 'files(id, name)',
+                pageSize: 10 // Get a few results to handle potential duplicates
+            });
+            
+            if (response.result.files && response.result.files.length > 0) {
+                // Return the first matching folder
+                const folderId = response.result.files[0].id!;
+                
+                                 // If we found multiple folders with the same name, log but don't clean up during sync
+                 if (response.result.files.length > 1) {
+                     console.warn(`Found ${response.result.files.length} folders named "${name}". Using first folder: ${folderId}`);
+                 }
+                
+                                 folderIdCache.set(cacheKey, folderId); // Cache the found folder
+                 return folderId;
+             }
+         } catch (error) {
+             console.error('Error searching for folder:', error);
+         }
+
+         // Create new folder if not found
+         try {
+             const metadata = { 
+                 name, 
+                 mimeType: 'application/vnd.google-apps.folder',
+                 ...(parentId && { parents: [parentId] })
+             };
+             const newFolder = await gapi.client.drive.files.create({ 
+                 resource: metadata, 
+                 fields: 'id' 
+             });
+             const folderId = newFolder.result.id!;
+             folderIdCache.set(cacheKey, folderId); // Cache the new folder
+             return folderId;
+         } catch (error) {
+             console.error('Error creating folder:', error);
+             throw error;
+         } finally {
+             // Always remove from the promise cache when done
+             folderCreationCache.delete(cacheKey);
+         }
+     })();
+
+     folderCreationCache.set(cacheKey, newPromise); // Cache the promise
+     return newPromise;
 }
 
 /**
@@ -386,6 +413,10 @@ async function cleanupDuplicateFolders(folders: any[], keepFolderId: string): Pr
 
 async function initializeDirectoryStructure(): Promise<void> {
     try {
+        // Clear caches to ensure fresh initialization
+        folderCreationCache.clear();
+        folderIdCache.clear();
+        
         const appFolderId = await findOrCreateFolder(APP_FOLDER_NAME);
         folderIds[APP_FOLDER_NAME] = appFolderId;
         
@@ -462,9 +493,11 @@ async function uploadFile(folderId: string, item: { id: string } & any, existing
             await gapi.client.drive.files.get({ fileId: folderId, fields: 'id' });
         } catch (error: any) {
             if (error?.status === 404) {
-                throw new Error(`Target folder ${folderId} not found. File: ${filename}`);
+                console.warn(`Target folder ${folderId} not found during upload of ${filename}. This may be due to a race condition.`);
+                // Don't throw here, let the upload attempt proceed and handle the error there
+            } else {
+                throw error;
             }
-            throw error;
         }
         
         // If we have an existingFileId, verify it still exists
@@ -519,7 +552,16 @@ async function uploadFile(folderId: string, item: { id: string } & any, existing
                 return uploadFile(folderId, item, undefined, retryCount + 1, itemType);
             }
             
-            throw new Error(`Upload failed: ${response.status} - ${errorData.error?.message || response.statusText}`);
+            // Provide more detailed error information
+            const errorMessage = errorData.error?.message || response.statusText;
+            console.error(`Upload failed for ${filename}: ${response.status} - ${errorMessage}`, {
+                folderId,
+                existingFileId,
+                itemType,
+                retryCount
+            });
+            
+            throw new Error(`Upload failed: ${response.status} - ${errorMessage}`);
         }
         
         console.log(`Successfully uploaded ${filename}`);
@@ -660,12 +702,30 @@ export async function backupAllDataToDrive(onProgress?: (progress: { current: nu
             uploadPromises.push(uploadProduct(product, reportProgress));
         });
 
-        // Upload invoices and track for deletion
+        // Upload invoices and track for deletion - group by year to reduce folder creation race conditions
         const localInvoiceIds = new Set<string>();
+        const invoicesByYear = new Map<string, Invoice[]>();
+        
+        // Group invoices by year
         activeInvoices.forEach(invoice => {
             localInvoiceIds.add(invoice.id);
-            uploadPromises.push(uploadInvoice(invoice, reportProgress));
+            const year = new Date(invoice.invoice_date).getFullYear().toString();
+            if (!invoicesByYear.has(year)) {
+                invoicesByYear.set(year, []);
+            }
+            invoicesByYear.get(year)!.push(invoice);
         });
+
+        // Upload invoices year by year to minimize folder creation conflicts
+        for (const [year, yearInvoices] of invoicesByYear) {
+            // Create year folder once for all invoices
+            const yearFolderId = await findOrCreateFolder(year, folderIds[INVOICES_DIRECTORY]);
+            
+            // Upload all invoices for this year
+            yearInvoices.forEach(invoice => {
+                uploadPromises.push(uploadInvoiceToYearFolder(invoice, yearFolderId, reportProgress));
+            });
+        }
 
         // Wait for all uploads to complete with individual error handling
         const uploadResults = await Promise.allSettled(uploadPromises);
@@ -761,6 +821,15 @@ async function uploadInvoice(invoice: Invoice, reportProgress: () => void): Prom
     }
 }
 
+async function uploadInvoiceToYearFolder(invoice: Invoice, yearFolderId: string, reportProgress: () => void): Promise<void> {
+    try {
+        const existing = await findFileByItem(invoice, yearFolderId, 'invoice');
+        await uploadFile(yearFolderId, invoice, existing?.fileId, 0, 'invoice');
+    } finally {
+        reportProgress(); // Always report progress even if upload fails
+    }
+}
+
 // Get files from all year subfolders in invoices directory
 async function getDriveFilesFromAllYearFolders<T extends { id: string }>(invoicesFolderId: string): Promise<Map<string, { fileId: string; modifiedTime: string; data: T }>> {
     const allFiles = new Map<string, { fileId: string; modifiedTime: string; data: T }>();
@@ -793,6 +862,63 @@ async function getDriveFilesFromAllYearFolders<T extends { id: string }>(invoice
 // --- Public Helper Functions ---
 
 export const getSyncStatus = () => ({ isSyncing });
+
+/**
+ * Clear all caches - useful for troubleshooting
+ */
+export function clearGoogleDriveCaches(): void {
+    folderCreationCache.clear();
+    folderIdCache.clear();
+    folderIds = {};
+    console.log('Google Drive caches cleared');
+}
+
+/**
+ * Manually clean up duplicate folders (call this outside of sync operations)
+ */
+export async function cleanupDuplicateFoldersManually(): Promise<void> {
+    if (!await isGoogleDriveAuthenticated()) {
+        console.log('Not authenticated with Google Drive');
+        return;
+    }
+
+    try {
+        console.log('Starting manual cleanup of duplicate folders...');
+        
+        // Find all folders in the app directory
+        const response = await gapi.client.drive.files.list({
+            q: `'${folderIds[APP_FOLDER_NAME]}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            fields: 'files(id, name)',
+        });
+
+        if (response.result.files) {
+            const foldersByName = new Map<string, any[]>();
+            
+            // Group folders by name
+            response.result.files.forEach(folder => {
+                if (!foldersByName.has(folder.name!)) {
+                    foldersByName.set(folder.name!, []);
+                }
+                foldersByName.get(folder.name!)!.push(folder);
+            });
+
+            // Clean up duplicates
+            for (const [name, folders] of foldersByName) {
+                if (folders.length > 1) {
+                    console.log(`Found ${folders.length} folders named "${name}". Cleaning up duplicates...`);
+                    const keepFolder = folders[0];
+                    const duplicates = folders.slice(1);
+                    
+                    await cleanupDuplicateFolders(folders, keepFolder.id!);
+                }
+            }
+        }
+
+        console.log('Manual cleanup completed');
+    } catch (error) {
+        console.error('Error during manual cleanup:', error);
+    }
+}
 
 // Legacy functions for compatibility - these now just trigger a full sync
 export async function saveCustomerToGoogleDrive(customer: CustomerData): Promise<void> {
