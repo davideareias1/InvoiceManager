@@ -237,6 +237,51 @@ export function signOutGoogleDrive(): Promise<void> {
 
 // --- Directory and File Management ---
 
+/**
+ * Helper function to sanitize filenames for Google Drive
+ */
+function sanitizeFilename(name: string): string {
+    // Replace special characters with safe alternatives, keeping more readable names
+    return name.replace(/[\/\\:*?"<>|]/g, '-')
+               .replace(/\s+/g, ' ')
+               .trim()
+               .substring(0, 200); // Limit length for Drive compatibility
+}
+
+/**
+ * Generate proper filename based on item type and content
+ */
+function generateFilename(item: any, itemType: 'invoice' | 'customer' | 'product' | 'company'): string {
+    switch (itemType) {
+        case 'invoice':
+            // For invoices, use just the invoice number (001.json, 002.json, etc.)
+            return `${String(item.invoice_number).padStart(3, '0')}.json`;
+        
+        case 'customer':
+            // For customers, prefer name over ID if available, otherwise use customer_ID format
+            if (item.name && typeof item.name === 'string' && item.name.trim()) {
+                return `${sanitizeFilename(item.name.trim())}.json`;
+            } else {
+                return `customer_${item.id}.json`;
+            }
+        
+        case 'product':
+            // For products, use the product name if available, otherwise product_ID format
+            if (item.name && typeof item.name === 'string' && item.name.trim()) {
+                return `${sanitizeFilename(item.name.trim())}.json`;
+            } else {
+                return `product_${item.id}.json`;
+            }
+        
+        case 'company':
+            return 'company_info.json';
+        
+        default:
+            // Fallback to ID-based naming
+            return `${item.id}.json`;
+    }
+}
+
 async function findOrCreateFolder(name: string, parentId?: string): Promise<string> {
     // First, try to find existing folder
     let query = `mimeType='application/vnd.google-apps.folder' and name='${name}' and trashed=false`;
@@ -255,26 +300,14 @@ async function findOrCreateFolder(name: string, parentId?: string): Promise<stri
             // Return the first matching folder
             const folderId = response.result.files[0].id!;
             
-            // If we found multiple folders with the same name, clean up duplicates
+            // If we found multiple folders with the same name, schedule cleanup but don't block
             if (response.result.files.length > 1) {
-                console.warn(`Found ${response.result.files.length} folders named "${name}". Cleaning up duplicates.`);
+                console.warn(`Found ${response.result.files.length} folders named "${name}". Scheduling cleanup for duplicates.`);
                 
-                // Delete duplicates sequentially to avoid race conditions
-                for (let i = 1; i < response.result.files.length; i++) {
-                    const folderId = response.result.files[i].id!;
-                    try {
-                        // First check if folder still exists before attempting deletion
-                        await gapi.client.drive.files.get({ fileId: folderId, fields: 'id' });
-                        await (gapi.client.drive.files as any).delete({ fileId: folderId });
-                        console.log(`Deleted duplicate folder: ${folderId}`);
-                    } catch (error: any) {
-                        if (error?.status === 404) {
-                            console.log(`Duplicate folder ${folderId} already deleted or doesn't exist`);
-                        } else {
-                            console.error('Error deleting duplicate folder:', error);
-                        }
-                    }
-                }
+                // Schedule cleanup in the background to avoid blocking uploads
+                setTimeout(async () => {
+                    await cleanupDuplicateFolders(response.result.files!, folderId);
+                }, 100);
             }
             
             return folderId;
@@ -298,6 +331,56 @@ async function findOrCreateFolder(name: string, parentId?: string): Promise<stri
     } catch (error) {
         console.error('Error creating folder:', error);
         throw error;
+    }
+}
+
+/**
+ * Clean up duplicate folders in the background to avoid race conditions
+ */
+async function cleanupDuplicateFolders(folders: any[], keepFolderId: string): Promise<void> {
+    const duplicates = folders.filter(folder => folder.id !== keepFolderId);
+    
+    for (const duplicate of duplicates) {
+        try {
+            // Double-check the folder still exists and is actually a duplicate
+            const folderCheck = await gapi.client.drive.files.get({ 
+                fileId: duplicate.id!, 
+                fields: 'id,name,parents' 
+            });
+            
+            // Verify it's still a duplicate (same name and parent)
+            const originalFolder = await gapi.client.drive.files.get({ 
+                fileId: keepFolderId, 
+                fields: 'id,name,parents' 
+            });
+            
+            if (folderCheck.result.name === originalFolder.result.name && 
+                JSON.stringify(folderCheck.result.parents) === JSON.stringify(originalFolder.result.parents)) {
+                
+                // Check if the duplicate folder is empty before deleting
+                const contents = await gapi.client.drive.files.list({
+                    q: `'${duplicate.id}' in parents and trashed=false`,
+                    fields: 'files(id)',
+                    pageSize: 1
+                });
+                
+                if (!contents.result.files || contents.result.files.length === 0) {
+                    await (gapi.client.drive.files as any).delete({ fileId: duplicate.id });
+                    console.log(`Deleted empty duplicate folder: ${duplicate.id}`);
+                } else {
+                    console.log(`Skipping deletion of non-empty duplicate folder: ${duplicate.id}`);
+                }
+            }
+        } catch (error: any) {
+            if (error?.status === 404) {
+                console.log(`Duplicate folder ${duplicate.id} already deleted or doesn't exist`);
+            } else {
+                console.error('Error during duplicate folder cleanup:', error);
+            }
+        }
+        
+        // Add small delay between deletions to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
     }
 }
 
@@ -364,9 +447,9 @@ async function getDriveFiles<T extends { id: string }>(parentFolderId: string): 
     return filesMap;
 }
 
-async function uploadFile(folderId: string, item: { id: string } & any, existingFileId?: string, retryCount = 0): Promise<void> {
+async function uploadFile(folderId: string, item: { id: string } & any, existingFileId?: string, retryCount = 0, itemType: 'invoice' | 'customer' | 'product' | 'company' = 'invoice'): Promise<void> {
     const maxRetries = 3;
-    const filename = `${item.id}.json`;
+    const filename = generateFilename(item, itemType);
     
     try {
         // Validate inputs
@@ -374,21 +457,7 @@ async function uploadFile(folderId: string, item: { id: string } & any, existing
             throw new Error(`Invalid folder ID for file ${filename}`);
         }
         
-        // If we have an existingFileId, verify it still exists
-        if (existingFileId) {
-            try {
-                await gapi.client.drive.files.get({ fileId: existingFileId, fields: 'id' });
-            } catch (error: any) {
-                if (error?.status === 404) {
-                    console.log(`Existing file ${existingFileId} not found, creating new file instead`);
-                    existingFileId = undefined; // Create new file instead
-                } else {
-                    throw error;
-                }
-            }
-        }
-        
-        // If we still don't have a valid folder, try to verify it exists
+        // Validate that the target folder exists before attempting upload
         try {
             await gapi.client.drive.files.get({ fileId: folderId, fields: 'id' });
         } catch (error: any) {
@@ -397,9 +466,22 @@ async function uploadFile(folderId: string, item: { id: string } & any, existing
             }
             throw error;
         }
+        
+        // If we have an existingFileId, verify it still exists
+        if (existingFileId) {
+            try {
+                await gapi.client.drive.files.get({ fileId: existingFileId, fields: 'id' });
+            } catch (error: any) {
+                if (error?.status === 404) {
+                    console.log(`Existing file ${existingFileId} not found, will create new file`);
+                    existingFileId = undefined;
+                } else {
+                    throw error;
+                }
+            }
+        }
 
-        const content = JSON.stringify(item, null, 2);
-        const blob = new Blob([content], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(item, null, 2)], { type: 'application/json' });
 
         const metadata = { 
             name: filename, 
@@ -434,7 +516,7 @@ async function uploadFile(folderId: string, item: { id: string } & any, existing
             // If it's a 404 and we were trying to update, try creating new instead
             if (response.status === 404 && existingFileId && retryCount === 0) {
                 console.log(`File ${existingFileId} not found, creating new file for ${filename}`);
-                return uploadFile(folderId, item, undefined, retryCount + 1);
+                return uploadFile(folderId, item, undefined, retryCount + 1, itemType);
             }
             
             throw new Error(`Upload failed: ${response.status} - ${errorData.error?.message || response.statusText}`);
@@ -442,10 +524,10 @@ async function uploadFile(folderId: string, item: { id: string } & any, existing
         
         console.log(`Successfully uploaded ${filename}`);
     } catch (error: any) {
-        if (retryCount < maxRetries && error?.message?.includes('network') || error?.name === 'NetworkError') {
+        if (retryCount < maxRetries && (error?.message?.includes('network') || error?.name === 'NetworkError')) {
             console.log(`Retrying upload for ${filename} (attempt ${retryCount + 1}/${maxRetries})`);
             await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))); // Exponential backoff
-            return uploadFile(folderId, item, existingFileId, retryCount + 1);
+            return uploadFile(folderId, item, existingFileId, retryCount + 1, itemType);
         }
         
         console.error(`Failed to upload ${filename} after ${retryCount + 1} attempts:`, error);
@@ -486,8 +568,31 @@ async function findFileByName(fileName: string, parentFolderId: string): Promise
 }
 
 async function findFileById(itemId: string, folderId: string): Promise<{ fileId: string; } | null> {
-    const filename = `${itemId}.json`;
-    return await findFileByName(filename, folderId);
+    // Legacy: Try to find by old UUID-based naming first
+    const legacyFilename = `${itemId}.json`;
+    const legacyResult = await findFileByName(legacyFilename, folderId);
+    return legacyResult;
+}
+
+/**
+ * Find existing file by item data and type (using new naming scheme)
+ */
+async function findFileByItem(item: any, folderId: string, itemType: 'invoice' | 'customer' | 'product' | 'company'): Promise<{ fileId: string; } | null> {
+    // First try to find by new naming scheme
+    const newFilename = generateFilename(item, itemType);
+    const newResult = await findFileByName(newFilename, folderId);
+    if (newResult) {
+        return newResult;
+    }
+    
+    // If not found, try legacy UUID-based naming for backwards compatibility
+    const legacyResult = await findFileById(item.id, folderId);
+    if (legacyResult) {
+        console.log(`Found file with legacy naming: ${item.id}.json, will update to: ${newFilename}`);
+        return legacyResult;
+    }
+    
+    return null;
 }
 
 // --- Sync Engine ---
@@ -621,7 +726,7 @@ export async function backupAllDataToDrive(onProgress?: (progress: { current: nu
 async function uploadCompanyInfo(companyInfo: CompanyInfo, reportProgress: () => void): Promise<void> {
     try {
         const existing = await findFileByName(COMPANY_INFO_FILENAME, folderIds[APP_FOLDER_NAME]);
-        await uploadFile(folderIds[APP_FOLDER_NAME], { ...companyInfo, id: 'company_info' }, existing?.fileId);
+        await uploadFile(folderIds[APP_FOLDER_NAME], { ...companyInfo, id: 'company_info' }, existing?.fileId, 0, 'company');
     } finally {
         reportProgress(); // Always report progress even if upload fails
     }
@@ -629,8 +734,8 @@ async function uploadCompanyInfo(companyInfo: CompanyInfo, reportProgress: () =>
 
 async function uploadCustomer(customer: CustomerData, reportProgress: () => void): Promise<void> {
     try {
-        const existing = await findFileById(customer.id, folderIds[CUSTOMERS_DIRECTORY]);
-        await uploadFile(folderIds[CUSTOMERS_DIRECTORY], customer, existing?.fileId);
+        const existing = await findFileByItem(customer, folderIds[CUSTOMERS_DIRECTORY], 'customer');
+        await uploadFile(folderIds[CUSTOMERS_DIRECTORY], customer, existing?.fileId, 0, 'customer');
     } finally {
         reportProgress(); // Always report progress even if upload fails
     }
@@ -638,8 +743,8 @@ async function uploadCustomer(customer: CustomerData, reportProgress: () => void
 
 async function uploadProduct(product: ProductData, reportProgress: () => void): Promise<void> {
     try {
-        const existing = await findFileById(product.id, folderIds[PRODUCTS_DIRECTORY]);
-        await uploadFile(folderIds[PRODUCTS_DIRECTORY], product, existing?.fileId);
+        const existing = await findFileByItem(product, folderIds[PRODUCTS_DIRECTORY], 'product');
+        await uploadFile(folderIds[PRODUCTS_DIRECTORY], product, existing?.fileId, 0, 'product');
     } finally {
         reportProgress(); // Always report progress even if upload fails
     }
@@ -649,8 +754,8 @@ async function uploadInvoice(invoice: Invoice, reportProgress: () => void): Prom
     try {
         const year = new Date(invoice.invoice_date).getFullYear().toString();
         const yearFolderId = await findOrCreateFolder(year, folderIds[INVOICES_DIRECTORY]);
-        const existing = await findFileById(invoice.id, yearFolderId);
-        await uploadFile(yearFolderId, invoice, existing?.fileId);
+        const existing = await findFileByItem(invoice, yearFolderId, 'invoice');
+        await uploadFile(yearFolderId, invoice, existing?.fileId, 0, 'invoice');
     } finally {
         reportProgress(); // Always report progress even if upload fails
     }
