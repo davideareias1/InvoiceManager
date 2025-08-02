@@ -211,14 +211,28 @@ export function requestGoogleDriveAuthorization(): Promise<void> {
     });
 }
 
-export function signOutGoogleDrive(): void {
-    const token = gapi.client.getToken();
-    if (token !== null) {
-        google.accounts.oauth2.revoke(token.access_token);
-        gapi.client.setToken('');
-        localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
-    }
-    folderIds = {};
+export function signOutGoogleDrive(): Promise<void> {
+    return new Promise((resolve) => {
+        try {
+            const token = gapi.client.getToken();
+            if (token !== null) {
+                try {
+                    google.accounts.oauth2.revoke(token.access_token);
+                } catch (revokeError) {
+                    console.warn('Failed to revoke token, but continuing with sign out:', revokeError);
+                }
+                gapi.client.setToken('');
+            }
+            localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
+            folderIds = {};
+            console.log('Google Drive sign out completed');
+        } catch (error) {
+            console.error('Error during Google Drive sign out:', error);
+        } finally {
+            // Always resolve to prevent sign out from getting stuck
+            resolve();
+        }
+    });
 }
 
 // --- Directory and File Management ---
@@ -244,12 +258,21 @@ async function findOrCreateFolder(name: string, parentId?: string): Promise<stri
             // If we found multiple folders with the same name, clean up duplicates
             if (response.result.files.length > 1) {
                 console.warn(`Found ${response.result.files.length} folders named "${name}". Cleaning up duplicates.`);
+                
+                // Delete duplicates sequentially to avoid race conditions
                 for (let i = 1; i < response.result.files.length; i++) {
+                    const folderId = response.result.files[i].id!;
                     try {
-                        await (gapi.client.drive.files as any).delete({ fileId: response.result.files[i].id! });
-                        console.log(`Deleted duplicate folder: ${response.result.files[i].id}`);
-                    } catch (error) {
-                        console.error('Error deleting duplicate folder:', error);
+                        // First check if folder still exists before attempting deletion
+                        await gapi.client.drive.files.get({ fileId: folderId, fields: 'id' });
+                        await (gapi.client.drive.files as any).delete({ fileId: folderId });
+                        console.log(`Deleted duplicate folder: ${folderId}`);
+                    } catch (error: any) {
+                        if (error?.status === 404) {
+                            console.log(`Duplicate folder ${folderId} already deleted or doesn't exist`);
+                        } else {
+                            console.error('Error deleting duplicate folder:', error);
+                        }
                     }
                 }
             }
@@ -341,44 +364,107 @@ async function getDriveFiles<T extends { id: string }>(parentFolderId: string): 
     return filesMap;
 }
 
-async function uploadFile(folderId: string, item: { id: string } & any, existingFileId?: string): Promise<void> {
-    const content = JSON.stringify(item, null, 2);
-    const blob = new Blob([content], { type: 'application/json' });
-
-    // Use the exact same naming convention as local storage: just the ID + .json
+async function uploadFile(folderId: string, item: { id: string } & any, existingFileId?: string, retryCount = 0): Promise<void> {
+    const maxRetries = 3;
     const filename = `${item.id}.json`;
-
-    const metadata = { 
-        name: filename, 
-        mimeType: 'application/json',
-        ...(existingFileId ? {} : { parents: [folderId] })
-    };
     
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    form.append('file', blob);
+    try {
+        // Validate inputs
+        if (!folderId) {
+            throw new Error(`Invalid folder ID for file ${filename}`);
+        }
+        
+        // If we have an existingFileId, verify it still exists
+        if (existingFileId) {
+            try {
+                await gapi.client.drive.files.get({ fileId: existingFileId, fields: 'id' });
+            } catch (error: any) {
+                if (error?.status === 404) {
+                    console.log(`Existing file ${existingFileId} not found, creating new file instead`);
+                    existingFileId = undefined; // Create new file instead
+                } else {
+                    throw error;
+                }
+            }
+        }
+        
+        // If we still don't have a valid folder, try to verify it exists
+        try {
+            await gapi.client.drive.files.get({ fileId: folderId, fields: 'id' });
+        } catch (error: any) {
+            if (error?.status === 404) {
+                throw new Error(`Target folder ${folderId} not found. File: ${filename}`);
+            }
+            throw error;
+        }
 
-    const uploadUrl = `https://www.googleapis.com/upload/drive/v3/files${existingFileId ? `/${existingFileId}` : ''}?uploadType=multipart`;
-    const method = existingFileId ? 'PATCH' : 'POST';
+        const content = JSON.stringify(item, null, 2);
+        const blob = new Blob([content], { type: 'application/json' });
 
-    const response = await fetch(uploadUrl, {
-        method,
-        headers: { 'Authorization': `Bearer ${gapi.client.getToken()!.access_token}` },
-        body: form,
-    });
-    
-    if (!response.ok) {
-        const error = await response.text();
-        console.error(`Failed to upload file ${filename}:`, error);
-        throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+        const metadata = { 
+            name: filename, 
+            mimeType: 'application/json',
+            ...(existingFileId ? {} : { parents: [folderId] })
+        };
+        
+        const form = new FormData();
+        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+        form.append('file', blob);
+
+        const uploadUrl = `https://www.googleapis.com/upload/drive/v3/files${existingFileId ? `/${existingFileId}` : ''}?uploadType=multipart`;
+        const method = existingFileId ? 'PATCH' : 'POST';
+
+        const response = await fetch(uploadUrl, {
+            method,
+            headers: { 'Authorization': `Bearer ${gapi.client.getToken()!.access_token}` },
+            body: form,
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorData;
+            try {
+                errorData = JSON.parse(errorText);
+            } catch {
+                errorData = { error: { message: errorText } };
+            }
+            
+            console.error(`Failed to upload file ${filename}:`, errorData);
+            
+            // If it's a 404 and we were trying to update, try creating new instead
+            if (response.status === 404 && existingFileId && retryCount === 0) {
+                console.log(`File ${existingFileId} not found, creating new file for ${filename}`);
+                return uploadFile(folderId, item, undefined, retryCount + 1);
+            }
+            
+            throw new Error(`Upload failed: ${response.status} - ${errorData.error?.message || response.statusText}`);
+        }
+        
+        console.log(`Successfully uploaded ${filename}`);
+    } catch (error: any) {
+        if (retryCount < maxRetries && error?.message?.includes('network') || error?.name === 'NetworkError') {
+            console.log(`Retrying upload for ${filename} (attempt ${retryCount + 1}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))); // Exponential backoff
+            return uploadFile(folderId, item, existingFileId, retryCount + 1);
+        }
+        
+        console.error(`Failed to upload ${filename} after ${retryCount + 1} attempts:`, error);
+        throw error;
     }
 }
 
 async function deleteFileFromDrive(fileId: string): Promise<void> {
     try {
+        // First check if file exists
+        await gapi.client.drive.files.get({ fileId, fields: 'id' });
+        // If we get here, file exists, so delete it
         await (gapi.client.drive.files as any).delete({ fileId });
         console.log(`Deleted file from Drive: ${fileId}`);
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.status === 404) {
+            console.log(`File ${fileId} already deleted or doesn't exist`);
+            return; // Don't throw error for files that don't exist
+        }
         console.error('Error deleting file from Drive:', error);
         throw error;
     }
@@ -476,34 +562,51 @@ export async function backupAllDataToDrive(onProgress?: (progress: { current: nu
             uploadPromises.push(uploadInvoice(invoice, reportProgress));
         });
 
-        // Wait for all uploads to complete
-        await Promise.all(uploadPromises);
+        // Wait for all uploads to complete with individual error handling
+        const uploadResults = await Promise.allSettled(uploadPromises);
+        const failedUploads = uploadResults.filter(result => result.status === 'rejected');
+        
+        if (failedUploads.length > 0) {
+            console.error(`${failedUploads.length} uploads failed:`, failedUploads);
+            // Continue with deletion but log the failures
+        }
 
-        // Delete files that no longer exist locally
+        // Delete files that no longer exist locally with individual error handling
         const deletePromises: Promise<void>[] = [];
         
         // Delete customers not in local storage
         driveCustomers.forEach((driveFile, id) => {
             if (!localCustomerIds.has(id)) {
-                deletePromises.push(deleteFileFromDrive(driveFile.fileId));
+                deletePromises.push(deleteFileFromDrive(driveFile.fileId).catch(error => {
+                    console.error(`Failed to delete customer file ${driveFile.fileId}:`, error);
+                }));
             }
         });
 
         // Delete products not in local storage
         driveProducts.forEach((driveFile, id) => {
             if (!localProductIds.has(id)) {
-                deletePromises.push(deleteFileFromDrive(driveFile.fileId));
+                deletePromises.push(deleteFileFromDrive(driveFile.fileId).catch(error => {
+                    console.error(`Failed to delete product file ${driveFile.fileId}:`, error);
+                }));
             }
         });
 
         // Delete invoices not in local storage
         driveInvoices.forEach((driveFile, id) => {
             if (!localInvoiceIds.has(id)) {
-                deletePromises.push(deleteFileFromDrive(driveFile.fileId));
+                deletePromises.push(deleteFileFromDrive(driveFile.fileId).catch(error => {
+                    console.error(`Failed to delete invoice file ${driveFile.fileId}:`, error);
+                }));
             }
         });
 
-        await Promise.all(deletePromises);
+        const deleteResults = await Promise.allSettled(deletePromises);
+        const failedDeletes = deleteResults.filter(result => result.status === 'rejected');
+        
+        if (failedDeletes.length > 0) {
+            console.error(`${failedDeletes.length} deletions failed:`, failedDeletes);
+        }
 
         console.log("Backup completed successfully - Google Drive is now synchronized with local storage");
     } catch (error) {
@@ -516,29 +619,41 @@ export async function backupAllDataToDrive(onProgress?: (progress: { current: nu
 
 // Helper functions for uploads
 async function uploadCompanyInfo(companyInfo: CompanyInfo, reportProgress: () => void): Promise<void> {
-    const existing = await findFileByName(COMPANY_INFO_FILENAME, folderIds[APP_FOLDER_NAME]);
-    await uploadFile(folderIds[APP_FOLDER_NAME], { ...companyInfo, id: 'company_info' }, existing?.fileId);
-    reportProgress();
+    try {
+        const existing = await findFileByName(COMPANY_INFO_FILENAME, folderIds[APP_FOLDER_NAME]);
+        await uploadFile(folderIds[APP_FOLDER_NAME], { ...companyInfo, id: 'company_info' }, existing?.fileId);
+    } finally {
+        reportProgress(); // Always report progress even if upload fails
+    }
 }
 
 async function uploadCustomer(customer: CustomerData, reportProgress: () => void): Promise<void> {
-    const existing = await findFileById(customer.id, folderIds[CUSTOMERS_DIRECTORY]);
-    await uploadFile(folderIds[CUSTOMERS_DIRECTORY], customer, existing?.fileId);
-    reportProgress();
+    try {
+        const existing = await findFileById(customer.id, folderIds[CUSTOMERS_DIRECTORY]);
+        await uploadFile(folderIds[CUSTOMERS_DIRECTORY], customer, existing?.fileId);
+    } finally {
+        reportProgress(); // Always report progress even if upload fails
+    }
 }
 
 async function uploadProduct(product: ProductData, reportProgress: () => void): Promise<void> {
-    const existing = await findFileById(product.id, folderIds[PRODUCTS_DIRECTORY]);
-    await uploadFile(folderIds[PRODUCTS_DIRECTORY], product, existing?.fileId);
-    reportProgress();
+    try {
+        const existing = await findFileById(product.id, folderIds[PRODUCTS_DIRECTORY]);
+        await uploadFile(folderIds[PRODUCTS_DIRECTORY], product, existing?.fileId);
+    } finally {
+        reportProgress(); // Always report progress even if upload fails
+    }
 }
 
 async function uploadInvoice(invoice: Invoice, reportProgress: () => void): Promise<void> {
-    const year = new Date(invoice.invoice_date).getFullYear().toString();
-    const yearFolderId = await findOrCreateFolder(year, folderIds[INVOICES_DIRECTORY]);
-    const existing = await findFileById(invoice.id, yearFolderId);
-    await uploadFile(yearFolderId, invoice, existing?.fileId);
-    reportProgress();
+    try {
+        const year = new Date(invoice.invoice_date).getFullYear().toString();
+        const yearFolderId = await findOrCreateFolder(year, folderIds[INVOICES_DIRECTORY]);
+        const existing = await findFileById(invoice.id, yearFolderId);
+        await uploadFile(yearFolderId, invoice, existing?.fileId);
+    } finally {
+        reportProgress(); // Always report progress even if upload fails
+    }
 }
 
 // Get files from all year subfolders in invoices directory

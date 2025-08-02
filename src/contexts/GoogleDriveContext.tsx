@@ -189,6 +189,9 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
     const signOut = useCallback(async (): Promise<void> => {
         if (!isSupported) return;
         
+        setIsLoading(true);
+        setConnectionStatusMessage('Signing out...');
+        
         try {
             await signOutGoogleDrive();
             setIsAuthenticated(false);
@@ -196,6 +199,12 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
             setConnectionStatusMessage('Signed out');
         } catch (error) {
             console.error('Error signing out of Google Drive:', error);
+            setConnectionStatusMessage('Sign out failed');
+            // Still update the auth state even if sign out had errors
+            setIsAuthenticated(false);
+            setIsBackupEnabled(false);
+        } finally {
+            setIsLoading(false);
         }
     }, [isSupported]);
 
@@ -204,18 +213,26 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
             throw new Error('Google Drive not available or not authenticated');
         }
 
+        setConnectionStatusMessage('Backing up...');
         setSyncProgress({ current: 0, total: 0 });
+        
         const handleProgress = (progress: { current: number, total: number }) => {
             setSyncProgress(progress);
         };
 
         try {
             await backupAllDataToDrive(handleProgress);
+            setConnectionStatusMessage('Backup completed');
         } catch (error) {
             console.error('Error backing up all files to Google Drive:', error);
+            setConnectionStatusMessage('Backup failed');
             throw error;
         } finally {
             setSyncProgress(null);
+            // Reset status message after a delay if no other operation is running
+            setTimeout(() => {
+                setConnectionStatusMessage(isAuthenticated ? 'Connected' : 'Not connected');
+            }, 3000);
         }
     }, [isSupported, isAuthenticated]);
 
