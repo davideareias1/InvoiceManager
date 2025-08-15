@@ -117,6 +117,7 @@ export default function HomePage() {
                 thisMonthRevenue: 0,
                 paidInvoices: 0,
                 unpaidInvoices: 0,
+                rectifiedInvoices: 0,
                 last3Months: Array(3).fill({ name: '...', revenue: 0 }),
                 statusData: [],
                 hasData: false
