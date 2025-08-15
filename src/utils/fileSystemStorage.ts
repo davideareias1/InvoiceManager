@@ -297,7 +297,7 @@ export async function saveInvoiceToFile(invoice: Invoice): Promise<boolean> {
         const yearDir = await getOrCreateDirectory(invoicesDir, year);
 
         // Create a filename based on invoice number
-        const filename = `invoice_${invoice.invoice_number}${FILE_EXTENSION}`;
+        const filename = `${invoice.invoice_number}${FILE_EXTENSION}`;
 
         // Get file handle
         const fileHandle = await yearDir.getFileHandle(filename, { create: true });
@@ -506,7 +506,7 @@ function sanitizeFilename(name: string): string {
  * Get standardized filename for an invoice
  */
 function getInvoiceFilename(invoiceNumber: string): string {
-    return `invoice_${invoiceNumber}${FILE_EXTENSION}`;
+    return `${invoiceNumber}${FILE_EXTENSION}`;
 }
 
 /**
