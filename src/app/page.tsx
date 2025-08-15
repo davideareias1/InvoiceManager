@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from '@/components/ui/button';
 import {
     FileText, Settings, BarChart2, CheckCircle, XCircle, ArrowUpRight,
-    HardDrive, Cloud, RefreshCw, AlertTriangle, PieChart, Database, LayoutDashboard, HelpCircle
+    HardDrive, Cloud, RefreshCw, AlertTriangle, PieChart, Database, LayoutDashboard, HelpCircle, FileX
 } from 'lucide-react';
 import { useFileSystem } from '../contexts/FileSystemContext';
 import { useCompany } from '../contexts/CompanyContext';
@@ -123,8 +123,14 @@ export default function HomePage() {
             };
         }
 
-        const paidInvoices = invoices.filter(inv => inv.is_paid).length;
-        const unpaidInvoices = invoices.length - paidInvoices;
+        // Calculate paid invoices (excluding rectified ones)
+        const paidInvoices = invoices.filter(inv => inv.is_paid && !inv.isRectified).length;
+        
+        // Calculate unpaid invoices (excluding rectified and storno invoices)
+        const unpaidInvoices = invoices.filter(inv => !inv.is_paid && !inv.isRectified).length;
+        
+        // Count rectified invoices separately
+        const rectifiedInvoices = invoices.filter(inv => inv.isRectified).length;
         const totalRevenue = invoices.reduce((sum, inv) => sum + inv.total, 0);
         const thisMonthInvoices = invoices.filter(inv => isThisMonth(parseISO(inv.invoice_date))).length;
         const thisMonthRevenue = invoices
@@ -133,7 +139,8 @@ export default function HomePage() {
 
         const statusData = [
             { name: 'Paid', value: paidInvoices },
-            { name: 'Unpaid', value: unpaidInvoices }
+            { name: 'Unpaid', value: unpaidInvoices },
+            { name: 'Rectified', value: rectifiedInvoices }
         ].filter(item => item.value > 0);
 
         const now = new Date();
@@ -160,6 +167,7 @@ export default function HomePage() {
             thisMonthRevenue,
             paidInvoices,
             unpaidInvoices,
+            rectifiedInvoices,
             last3Months: monthlyRevenue,
             statusData,
             hasData: invoices.length > 0
@@ -521,6 +529,7 @@ export default function HomePage() {
                                  <MetricCard title="This Month" value={analytics.thisMonthInvoices} />
                                  <MetricCard title="Paid" value={analytics.paidInvoices} icon={CheckCircle} iconClass="text-green-600" />
                                  <MetricCard title="Unpaid" value={analytics.unpaidInvoices} icon={XCircle} iconClass="text-red-600" />
+                                 <MetricCard title="Rectified" value={analytics.rectifiedInvoices} icon={FileX} iconClass="text-gray-600" />
                              </div>
 
                             <Separator className="my-6" />

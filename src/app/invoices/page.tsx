@@ -155,9 +155,9 @@ export default function Invoices() {
     // Filter function
     const filterInvoices = useCallback((invoices: Invoice[]): Invoice[] => {
         return invoices.filter(invoice => {
-            // Filter by payment status
-            if (!showPaid && invoice.is_paid) return false;
-            if (!showUnpaid && !invoice.is_paid) return false;
+            // Filter by payment status (exclude rectified invoices from payment status filtering)
+            if (!showPaid && invoice.is_paid && !invoice.isRectified) return false;
+            if (!showUnpaid && !invoice.is_paid && !invoice.isRectified) return false;
 
             // Filter by date
             if (dateFilter !== 'all') {

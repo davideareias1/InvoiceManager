@@ -167,6 +167,12 @@ export default function AnalyticsPage() {
 
         // Count invoices by status
         filteredInvoices.forEach(invoice => {
+            // Handle rectified invoices separately
+            if (invoice.isRectified) {
+                statusCounts['cancelled']++;
+                return;
+            }
+            
             const status = invoice.status?.toLowerCase() || (invoice.is_paid ? 'paid' : 'unpaid');
             if (statusCounts[status] !== undefined) {
                 statusCounts[status]++;
@@ -344,15 +350,21 @@ export default function AnalyticsPage() {
                             <div className="flex justify-center gap-4 w-full">
                                 <div className="flex flex-col items-center">
                                     <Badge className="mb-1 bg-green-100 text-green-800 hover:bg-green-100">
-                                        {filteredInvoices.filter(inv => inv.is_paid).length}
+                                        {filteredInvoices.filter(inv => inv.is_paid && !inv.isRectified).length}
                                     </Badge>
                                     <span className="text-xs text-muted-foreground">Paid</span>
                                 </div>
                                 <div className="flex flex-col items-center">
                                     <Badge className="mb-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
-                                        {filteredInvoices.filter(inv => !inv.is_paid).length}
+                                        {filteredInvoices.filter(inv => !inv.is_paid && !inv.isRectified).length}
                                     </Badge>
                                     <span className="text-xs text-muted-foreground">Unpaid</span>
+                                </div>
+                                <div className="flex flex-col items-center">
+                                    <Badge className="mb-1 bg-gray-100 text-gray-800 hover:bg-gray-100">
+                                        {filteredInvoices.filter(inv => inv.isRectified).length}
+                                    </Badge>
+                                    <span className="text-xs text-muted-foreground">Rectified</span>
                                 </div>
                             </div>
                         </div>
