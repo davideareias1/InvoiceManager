@@ -118,20 +118,24 @@ export default function HomePage() {
                 paidInvoices: 0,
                 unpaidInvoices: 0,
                 rectifiedInvoices: 0,
+                rectificationInvoices: 0,
                 last3Months: Array(3).fill({ name: '...', revenue: 0 }),
                 statusData: [],
                 hasData: false
             };
         }
 
-        // Calculate paid invoices (excluding rectified ones)
+        // Count rectified invoices (original invoices that have been rectified)
+        const rectifiedInvoices = invoices.filter(inv => inv.isRectified).length;
+        
+        // Count rectification invoices (Stornorechnung - negative amounts)
+        const rectificationInvoices = invoices.filter(inv => inv.total < 0).length;
+        
+        // Calculate paid invoices (excluding rectified ones, but including corrected invoices)
         const paidInvoices = invoices.filter(inv => inv.is_paid && !inv.isRectified).length;
         
-        // Calculate unpaid invoices (excluding rectified and storno invoices)
+        // Calculate unpaid invoices (excluding rectified ones, but including corrected invoices)
         const unpaidInvoices = invoices.filter(inv => !inv.is_paid && !inv.isRectified).length;
-        
-        // Count rectified invoices separately
-        const rectifiedInvoices = invoices.filter(inv => inv.isRectified).length;
         const totalRevenue = invoices.reduce((sum, inv) => sum + inv.total, 0);
         const thisMonthInvoices = invoices.filter(inv => isThisMonth(parseISO(inv.invoice_date))).length;
         const thisMonthRevenue = invoices
@@ -141,7 +145,8 @@ export default function HomePage() {
         const statusData = [
             { name: 'Paid', value: paidInvoices },
             { name: 'Unpaid', value: unpaidInvoices },
-            { name: 'Rectified', value: rectifiedInvoices }
+            { name: 'Rectified', value: rectifiedInvoices },
+            { name: 'Cancelled', value: rectificationInvoices }
         ].filter(item => item.value > 0);
 
         const now = new Date();
@@ -169,6 +174,7 @@ export default function HomePage() {
             paidInvoices,
             unpaidInvoices,
             rectifiedInvoices,
+            rectificationInvoices,
             last3Months: monthlyRevenue,
             statusData,
             hasData: invoices.length > 0
@@ -531,6 +537,7 @@ export default function HomePage() {
                                  <MetricCard title="Paid" value={analytics.paidInvoices} icon={CheckCircle} iconClass="text-green-600" />
                                  <MetricCard title="Unpaid" value={analytics.unpaidInvoices} icon={XCircle} iconClass="text-red-600" />
                                  <MetricCard title="Rectified" value={analytics.rectifiedInvoices} icon={FileX} iconClass="text-gray-600" />
+                                 <MetricCard title="Cancelled" value={analytics.rectificationInvoices} icon={XCircle} iconClass="text-red-600" />
                              </div>
 
                             <Separator className="my-6" />

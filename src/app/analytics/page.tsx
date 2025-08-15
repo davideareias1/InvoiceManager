@@ -167,8 +167,14 @@ export default function AnalyticsPage() {
 
         // Count invoices by status
         filteredInvoices.forEach(invoice => {
-            // Handle rectified invoices separately
+            // Handle rectified invoices separately (original invoices that were rectified)
             if (invoice.isRectified) {
+                statusCounts['cancelled']++;
+                return;
+            }
+            
+            // Handle rectification invoices (Stornorechnung - negative amounts)
+            if (invoice.total < 0) {
                 statusCounts['cancelled']++;
                 return;
             }
@@ -350,13 +356,13 @@ export default function AnalyticsPage() {
                             <div className="flex justify-center gap-4 w-full">
                                 <div className="flex flex-col items-center">
                                     <Badge className="mb-1 bg-green-100 text-green-800 hover:bg-green-100">
-                                        {filteredInvoices.filter(inv => inv.is_paid && !inv.isRectified).length}
+                                        {filteredInvoices.filter(inv => inv.is_paid && !inv.isRectified && inv.total >= 0).length}
                                     </Badge>
                                     <span className="text-xs text-muted-foreground">Paid</span>
                                 </div>
                                 <div className="flex flex-col items-center">
                                     <Badge className="mb-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
-                                        {filteredInvoices.filter(inv => !inv.is_paid && !inv.isRectified).length}
+                                        {filteredInvoices.filter(inv => !inv.is_paid && !inv.isRectified && inv.total >= 0).length}
                                     </Badge>
                                     <span className="text-xs text-muted-foreground">Unpaid</span>
                                 </div>
@@ -365,6 +371,12 @@ export default function AnalyticsPage() {
                                         {filteredInvoices.filter(inv => inv.isRectified).length}
                                     </Badge>
                                     <span className="text-xs text-muted-foreground">Rectified</span>
+                                </div>
+                                <div className="flex flex-col items-center">
+                                    <Badge className="mb-1 bg-red-100 text-red-800 hover:bg-red-100">
+                                        {filteredInvoices.filter(inv => inv.total < 0).length}
+                                    </Badge>
+                                    <span className="text-xs text-muted-foreground">Cancelled</span>
                                 </div>
                             </div>
                         </div>
