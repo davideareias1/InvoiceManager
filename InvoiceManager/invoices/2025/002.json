@@ -1,0 +1,48 @@
+{
+  "id": "3770776d-6de0-4944-a3aa-3aee816a5100",
+  "invoice_number": "002",
+  "invoice_date": "2025-05-04",
+  "due_date": "2025-05-18",
+  "notes": "",
+  "client_name": "Joule Tech UG",
+  "client_address": "Vor dem Kreuzberg 17, 72072",
+  "client_vat_id": "",
+  "client_vat_exempt": true,
+  "tax_exemption_reason": "Gemäß § 19 UStG keine Umsatzsteuer (Kleinunternehmerregelung)",
+  "tax_rate": 0,
+  "issuer": {
+    "name": "Areias IT",
+    "address": "Sarchhalde 15, Tübingen 72076",
+    "city": "Tübingen 72076"
+  },
+  "customer": {
+    "name": "Joule Tech UG",
+    "address": "Vor dem Kreuzberg 17",
+    "city": "72072",
+    "number": "",
+    "id": "786215b5-e1ca-417f-80d9-5b087c6118ce",
+    "createdAt": "2025-03-24T14:52:35.749Z",
+    "updatedAt": "2025-03-24T14:52:35.749Z",
+    "postal_code": "72072",
+    "lastModified": "2025-03-24T14:52:35.749Z",
+    "isDeleted": false
+  },
+  "items": [
+    {
+      "name": "Beratung und Projektunterstützung gemäß Dienstleistungsvertrag",
+      "quantity": 1,
+      "price": 4000,
+      "description": ""
+    }
+  ],
+  "total": 4000,
+  "bank_details": {
+    "bankName": "Millennium bcp",
+    "iban": "PT50003300004526488597405",
+    "swiftBic": "BCOMPTPL",
+    "accountName": "Davide Figueiredo Areias"
+  },
+  "is_paid": true,
+  "status": "paid",
+  "payment_status": "paid"
+}
