@@ -1,9 +1,9 @@
 'use client';
 
-import { CustomerData } from '../interfaces/index';
+import { CustomerData, CustomerRepository } from '../../domain/models';
 import { v4 as uuidv4 } from 'uuid';
-import { saveCustomerToFile, loadCustomersFromFiles, deleteCustomerFile } from './fileSystemStorage';
-import { saveCustomerToGoogleDrive } from './googleDriveStorage';
+import { saveCustomerToFile, loadCustomersFromFiles, deleteCustomerFile } from '../filesystem/fileSystemStorage';
+import { saveCustomerToGoogleDrive } from '../google/googleDriveStorage';
 
 // Structure for a saved customer with ID
 export interface SavedCustomer extends CustomerData {
@@ -150,3 +150,13 @@ export const searchCustomers = (query: string): SavedCustomer[] => {
         (customer.number && customer.number.toLowerCase().includes(lowerQuery))
     );
 }; 
+
+// Adapter to domain repository interface (using SavedCustomer conforms to CustomerData superset)
+export const customerRepositoryAdapter: CustomerRepository = {
+    setDirectoryHandle,
+    loadCustomers: async () => (await loadCustomers()) as unknown as CustomerData[],
+    loadCustomersSync: () => loadCustomersSync() as unknown as CustomerData[],
+    saveCustomer: async (c: CustomerData) => (await saveCustomer(c)) as unknown as CustomerData,
+    deleteCustomer,
+    searchCustomers: (q: string) => searchCustomers(q) as unknown as CustomerData[],
+};

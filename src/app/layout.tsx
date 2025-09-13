@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import { FileSystemProvider } from '../contexts/FileSystemContext'
-import { CompanyProvider } from '../contexts/CompanyContext'
-import { GoogleDriveProvider } from '../contexts/GoogleDriveContext'
+import { FileSystemProvider } from '../infrastructure/contexts/FileSystemContext'
+import { CompanyProvider } from '../infrastructure/contexts/CompanyContext'
+import { GoogleDriveProvider } from '../infrastructure/contexts/GoogleDriveContext'
 
 const inter = Inter({ subsets: ['latin'] })
 

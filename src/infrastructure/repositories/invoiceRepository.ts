@@ -1,11 +1,11 @@
 'use client';
 
-import { Invoice, InvoiceStatus } from '../interfaces';
+import { Invoice, InvoiceStatus, InvoiceRepository } from '../../domain/models';
 import { v4 as uuidv4 } from 'uuid';
-import { saveInvoiceToFile, loadInvoicesFromFiles } from './fileSystemStorage';
-import { saveInvoiceToGoogleDrive } from './googleDriveStorage';
+import { saveInvoiceToFile, loadInvoicesFromFiles } from '../filesystem/fileSystemStorage';
+import { saveInvoiceToGoogleDrive } from '../google/googleDriveStorage';
 import { format, addDays } from 'date-fns';
-import { formatDate } from './formatters';
+import { formatDate } from '../../shared/formatters';
 
 // Global variable to cache directory handle and invoices
 let directoryHandle: FileSystemDirectoryHandle | null = null;
@@ -195,6 +195,18 @@ export const generateNextInvoiceNumber = async (): Promise<string> => {
     return number.toString().padStart(3, '0');
 };
 
+// Adapter to domain repository interface
+export const invoiceRepositoryAdapter: InvoiceRepository = {
+    setDirectoryHandle,
+    loadInvoices,
+    loadInvoicesSync,
+    getInvoiceById,
+    saveInvoice,
+    deleteInvoice,
+    searchInvoices,
+    generateNextInvoiceNumber,
+};
+
 /**
  * Create both rectification and corrected invoice with proper sequential numbering
  * This ensures correct invoice number sequence, including Storno invoices
@@ -223,7 +235,7 @@ export const createRectificationPair = async (originalInvoice: Invoice): Promise
         due_date: format(addDays(new Date(), 14), 'yyyy-MM-dd'),
         items: [
             {
-                name: `Stornierung der Rechnung #${originalInvoice.invoice_number} vom ${formatDate(originalInvoice.invoice_date)}`,
+                name: `Stornorechnung zu Rechnung #${originalInvoice.invoice_number} vom ${formatDate(originalInvoice.invoice_date)}`,
                 quantity: 1,
                 price: 0
             },
@@ -232,8 +244,9 @@ export const createRectificationPair = async (originalInvoice: Invoice): Promise
             price: -item.price // Negative prices for cancellation
         }))],
         total: -originalInvoice.total, // Negative total
-        notes: `Stornierung der Rechnung #${originalInvoice.invoice_number} vom ${formatDate(originalInvoice.invoice_date)}.\n\nAlle Posten der ursprünglichen Rechnung werden mit diesem Vorgang storniert.\n\nUrsprüngliche Notizen:\n${originalInvoice.notes || ''}`,
-        status: InvoiceStatus.Cancelled,
+        notes: `Stornorechnung (Rechnungsstorno) zu Rechnung #${originalInvoice.invoice_number} vom ${formatDate(originalInvoice.invoice_date)}.\n\nDiese Stornorechnung macht die ursprüngliche Rechnung vollständig rückgängig.\n\nUrsprüngliche Notizen:\n${originalInvoice.notes || ''}`,
+        // Stornorechnung: do not set explicit status; it will be derived
+        status: undefined,
         is_paid: false,
         lastModified: new Date().toISOString(),
         isDeleted: false,
@@ -248,8 +261,8 @@ export const createRectificationPair = async (originalInvoice: Invoice): Promise
         invoice_number: correctedNumber.toString().padStart(3, '0'),
         invoice_date: format(new Date(), 'yyyy-MM-dd'),
         due_date: format(addDays(new Date(), 14), 'yyyy-MM-dd'),
-        notes: `Korrigierte Rechnung zu Rechnung #${originalInvoice.invoice_number}\n\nDiese Rechnung ersetzt die stornierte Rechnung #${rectificationNumber.toString().padStart(3, '0')}.\n\n${originalInvoice.notes || ''}`,
-        status: InvoiceStatus.Draft,
+        notes: `Korrigierte Rechnung (Ersatz) zu Rechnung #${originalInvoice.invoice_number}.\n\nDiese Rechnung ersetzt die Stornorechnung #${rectificationNumber.toString().padStart(3, '0')}.\n\n${originalInvoice.notes || ''}`,
+        status: InvoiceStatus.Unpaid,
         is_paid: false,
         lastModified: new Date().toISOString(),
         isDeleted: false,
@@ -262,6 +275,7 @@ export const createRectificationPair = async (originalInvoice: Invoice): Promise
         ...originalInvoice,
         isRectified: true,
         rectifiedBy: rectificationNumber.toString().padStart(3, '0'),
+        status: InvoiceStatus.Rectified,
         lastModified: new Date().toISOString()
     };
     

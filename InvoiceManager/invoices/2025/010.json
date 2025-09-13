@@ -5,14 +5,14 @@
   "due_date": "2025-09-17",
   "notes": "",
   "client_name": "Striatech GmbH",
-  "client_address": "Vor dem Kreuzberg 17, Tübingen, 72070",
+  "client_address": "Vor dem Kreuzberg 17, Tübingen\n72070",
   "client_vat_id": "",
   "client_vat_exempt": false,
   "tax_exemption_reason": "Gemäß § 19 UStG keine Umsatzsteuer (Kleinunternehmerregelung)",
   "tax_rate": 0,
   "issuer": {
     "name": "Davide Figueiredo Areias",
-    "address": "Königsberger Straße, Tübingen 72072",
+    "address": "Königsberger Straße",
     "city": "Tübingen 72072"
   },
   "customer": {
@@ -21,11 +21,9 @@
     "address": "Vor dem Kreuzberg 17, Tübingen",
     "city": "72070",
     "number": "",
-    "lastModified": "2025-07-03T13:23:56.947Z",
+    "lastModified": "",
     "createdAt": "2025-07-03T13:23:56.947Z",
-    "updatedAt": "2025-07-03T13:23:56.947Z",
-    "postal_code": "72070",
-    "isDeleted": false
+    "updatedAt": "2025-07-03T13:23:56.947Z"
   },
   "items": [
     {
@@ -37,14 +35,13 @@
   ],
   "total": 2580,
   "bank_details": {
-    "bankName": "Millennium bcp",
+    "name": "Millennium bcp",
     "iban": "PT50003300004526488597405",
-    "swiftBic": "BCOMPTPL",
-    "accountName": "Davide Figueiredo Areias"
+    "bic": "BCOMPTPL"
   },
   "is_paid": false,
   "lastModified": "2025-09-03T17:08:12.954Z",
   "isRectified": false,
   "isDeleted": false,
-  "payment_status": "unpaid"
+  "status": null
 }

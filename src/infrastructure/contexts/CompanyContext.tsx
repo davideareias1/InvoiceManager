@@ -1,8 +1,8 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { CompanyInfo } from '../interfaces';
-import { loadCompanyInfo, saveCompanyInfo } from '../utils/companyUtils';
+import { CompanyInfo } from '../../domain/models';
+import { loadCompanyInfo, saveCompanyInfo } from '../repositories/companyRepository';
 import { useFileSystem } from './FileSystemContext';
 
 // Default company info

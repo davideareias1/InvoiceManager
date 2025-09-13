@@ -1,7 +1,7 @@
 'use client';
 
-import { Invoice, CompanyInfo } from '../interfaces';
-import { formatCurrency, formatDate } from '@/utils/formatters';
+import { Invoice, CompanyInfo } from '../../domain/models';
+import { formatCurrency, formatDate } from '../../shared/formatters';
 
 /**
  * Interface for email sending options

@@ -1,12 +1,10 @@
 {
   "id": "5e1bbd61-baf9-4e2c-8cdb-94a487d405ee",
   "name": "Striatech GmbH",
-  "address": "Vor dem Kreuzberg",
-  "city": "Tübingen",
-  "number": "17",
-  "lastModified": "2025-07-03T13:23:56.947Z",
+  "address": "Vor dem Kreuzberg 17, Tübingen",
+  "city": "72070",
+  "number": "",
+  "lastModified": "",
   "createdAt": "2025-07-03T13:23:56.947Z",
-  "updatedAt": "2025-07-03T13:23:56.947Z",
-  "postal_code": "72070",
-  "isDeleted": false
+  "updatedAt": "2025-07-03T13:23:56.947Z"
 }

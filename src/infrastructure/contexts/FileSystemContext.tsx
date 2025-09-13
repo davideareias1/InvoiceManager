@@ -5,18 +5,15 @@ import {
     isFileSystemAccessSupported,
     requestDirectoryPermission,
     hasSavedDirectory,
-    saveInvoiceToFile,
-    loadInvoicesFromFiles,
-    deleteInvoiceFile,
     initializeFileSystem,
     getSavedDirectoryHandle,
     setDirectoryHandle as setFileSystemDirectoryHandle,
     resetDirectoryAccess
-} from '../utils/fileSystemStorage';
-import { Invoice } from '../interfaces';
-import { setDirectoryHandle as setCustomerDirectoryHandle } from '../utils/customerUtils';
-import { setDirectoryHandle as setProductDirectoryHandle } from '../utils/productUtils';
-import { setDirectoryHandle as setInvoiceDirectoryHandle, loadInvoices as loadInvoicesFromUtils, deleteInvoice as deleteInvoiceFromUtils, saveInvoice as saveInvoiceToUtils } from '../utils/invoiceUtils';
+} from '../filesystem/fileSystemStorage';
+import { Invoice } from '../../domain/models';
+import { setDirectoryHandle as setCustomerDirectoryHandle } from '../repositories/customerRepository';
+import { setDirectoryHandle as setProductDirectoryHandle } from '../repositories/productRepository';
+import { setDirectoryHandle as setInvoiceDirectoryHandle, loadInvoices as loadInvoicesFromUtils, deleteInvoice as deleteInvoiceFromUtils, saveInvoice as saveInvoiceToUtils } from '../repositories/invoiceRepository';
 
 interface FileSystemContextType {
     isSupported: boolean;

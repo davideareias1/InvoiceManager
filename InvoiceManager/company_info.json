@@ -1,6 +1,6 @@
 {
   "name": "Davide Figueiredo Areias",
-  "address": "Königsberger Straße, Tübingen 72072",
+  "address": "Königsberger Straße\nTübingen 72072",
   "phone": "+4915563420624",
   "email": "davide@areias.it",
   "website": "www.areias.it",
@@ -19,5 +19,6 @@
   "default_tax_rate": 19,
   "is_freelancer": true,
   "full_name": "Davide Figueiredo Areias",
-  "lastModified": "2025-09-12T18:15:20.062Z"
+  "lastModified": "2025-06-26T14:37:57.253Z",
+  "id": "company_info"
 }

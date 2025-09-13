@@ -1,7 +1,7 @@
 'use client';
 
-import { CustomerData } from '../interfaces';
-import { SavedCustomer } from './customerUtils';
+import { CustomerData } from '../../domain/models';
+import { SavedCustomer } from '../repositories/customerRepository';
 
 /**
  * Saves customer data to a JSON file in the specified directory

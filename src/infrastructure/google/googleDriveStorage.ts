@@ -1,6 +1,6 @@
 'use client';
 
-import { Invoice, CustomerData, ProductData, CompanyInfo } from '../interfaces';
+import { Invoice, CustomerData, ProductData, CompanyInfo } from '../../domain/models';
 import {
     loadCustomersFromFiles,
     loadProductsFromFiles,
@@ -13,7 +13,7 @@ import {
     deleteInvoiceFile,
     loadCompanyInfoFromFile,
     saveCompanyInfoToFile,
-} from './fileSystemStorage';
+} from '../filesystem/fileSystemStorage';
 
 // Constants
 const LOCAL_STORAGE_TOKEN_KEY = 'google-drive-auth-token';

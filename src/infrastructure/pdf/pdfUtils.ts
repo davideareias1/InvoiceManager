@@ -3,8 +3,8 @@
 import { jsPDF } from 'jspdf';
 // Import jspdf-autotable
 import autoTable from 'jspdf-autotable';
-import { Invoice, InvoiceItem, CompanyInfo } from '../interfaces';
-import { formatCurrency, formatDate, formatQuantity } from './formatters';
+import { Invoice, InvoiceItem, CompanyInfo } from '../../domain/models';
+import { formatCurrency, formatDate, formatQuantity } from '../../shared/formatters';
 
 // Global settings for PDF generation
 const PDF_MARGIN_LEFT = 15;

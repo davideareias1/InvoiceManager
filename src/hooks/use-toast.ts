@@ -3,10 +3,17 @@
 // Inspired by react-hot-toast library
 import * as React from "react"
 
-import type {
-  ToastActionElement,
-  ToastProps,
-} from "@/components/ui/toast"
+// Minimal local toast types to decouple from removed UI components
+type ToastActionElement = React.ReactNode
+type ToastProps = {
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  title?: React.ReactNode
+  description?: React.ReactNode
+  action?: ToastActionElement
+  duration?: number
+  variant?: 'default' | 'destructive'
+}
 
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 1000000

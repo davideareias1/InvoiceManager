@@ -95,11 +95,10 @@ export interface CompanyInfo {
 }
 
 export enum InvoiceStatus {
-    Draft = 'draft',
-    Sent = 'sent',
+    Unpaid = 'unpaid',
     Paid = 'paid',
     Overdue = 'overdue',
-    Cancelled = 'cancelled'
+    Rectified = 'rectified'
 }
 
 export enum PaymentStatus {
@@ -107,4 +106,39 @@ export enum PaymentStatus {
     PartiallyPaid = 'partially_paid',
     Paid = 'paid',
     Refunded = 'refunded'
+}
+
+// Domain repository contracts (DDD)
+export interface CompanyRepository {
+    loadCompanyInfo(): Promise<CompanyInfo | null>;
+    saveCompanyInfo(info: Partial<CompanyInfo>): Promise<CompanyInfo>;
+}
+
+export interface CustomerRepository {
+    setDirectoryHandle(handle: FileSystemDirectoryHandle): void;
+    loadCustomers(): Promise<CustomerData[]>;
+    loadCustomersSync(): CustomerData[];
+    saveCustomer(customer: CustomerData): Promise<CustomerData>;
+    deleteCustomer(customerId: string): Promise<boolean>;
+    searchCustomers(query: string): CustomerData[];
+}
+
+export interface ProductRepository {
+    setDirectoryHandle(handle: FileSystemDirectoryHandle): void;
+    loadProducts(): Promise<ProductData[]>;
+    loadProductsSync(): ProductData[];
+    saveProduct(product: Partial<ProductData>): Promise<ProductData>;
+    deleteProduct(id: string): Promise<boolean>;
+    searchProducts(query: string): ProductData[];
+}
+
+export interface InvoiceRepository {
+    setDirectoryHandle(handle: FileSystemDirectoryHandle): void;
+    loadInvoices(): Promise<Invoice[]>;
+    loadInvoicesSync(): Invoice[];
+    getInvoiceById(id: string): Invoice | null;
+    saveInvoice(invoice: Partial<Invoice>): Promise<Invoice>;
+    deleteInvoice(id: string): Promise<boolean>;
+    searchInvoices(query: string): Invoice[];
+    generateNextInvoiceNumber(): Promise<string>;
 } 

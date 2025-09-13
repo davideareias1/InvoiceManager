@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { Invoice, InvoiceItem, CompanyInfo } from '../interfaces';
+import { Invoice, InvoiceItem, CompanyInfo } from '../../domain/models';
 import { format } from 'date-fns';
 import { generateInvoicePDF as generateModernInvoicePDF } from './pdfUtils';
 

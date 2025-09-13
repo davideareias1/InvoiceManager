@@ -12,8 +12,8 @@ import {
     saveProductToGoogleDrive,
     backupAllDataToDrive,
     getSyncStatus,
-} from '../utils/googleDriveStorage';
-import { Invoice } from '../interfaces';
+} from '../google/googleDriveStorage';
+import { Invoice } from '../../domain/models';
 import { useFileSystemChild } from './FileSystemContext';
 
 interface GoogleDriveContextType {

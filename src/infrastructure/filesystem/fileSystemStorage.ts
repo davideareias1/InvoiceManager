@@ -1,6 +1,6 @@
 'use client';
 
-import { Invoice } from '../interfaces';
+import { Invoice } from '../../domain/models';
 
 // Constants
 const DIRECTORY_HANDLE_KEY = 'invoice-directory-handle';
@@ -111,7 +111,7 @@ export function setDirectoryHandle(handle: FileSystemDirectoryHandle | null): vo
  * Check if File System Access API is supported in the current browser
  */
 export function isFileSystemAccessSupported(): boolean {
-    return 'showDirectoryPicker' in window;
+    return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 }
 
 /**

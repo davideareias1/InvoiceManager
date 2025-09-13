@@ -1,9 +1,9 @@
 'use client';
 
 import { v4 as uuidv4 } from 'uuid';
-import { ProductData } from '../interfaces';
-import { saveProductToFile, loadProductsFromFiles, deleteProductFile } from './fileSystemStorage';
-import { saveProductToGoogleDrive } from './googleDriveStorage';
+import { ProductData, ProductRepository } from '../../domain/models';
+import { saveProductToFile, loadProductsFromFiles, deleteProductFile } from '../filesystem/fileSystemStorage';
+import { saveProductToGoogleDrive } from '../google/googleDriveStorage';
 
 // Global variable to cache directory handle and products
 let directoryHandle: FileSystemDirectoryHandle | null = null;
@@ -130,3 +130,13 @@ export function searchProducts(query: string): ProductData[] {
         (product.description && product.description.toLowerCase().includes(lowerQuery))
     );
 } 
+
+// Adapter to domain repository interface
+export const productRepositoryAdapter: ProductRepository = {
+    setDirectoryHandle,
+    loadProducts,
+    loadProductsSync,
+    saveProduct,
+    deleteProduct,
+    searchProducts,
+};
