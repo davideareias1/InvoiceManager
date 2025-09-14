@@ -1,12 +1,11 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import { FileSystemProvider } from '../contexts/FileSystemContext'
-import { CompanyProvider } from '../contexts/CompanyContext'
-import { GoogleDriveProvider } from '../contexts/GoogleDriveContext'
-import { MainNav } from '@/components/main-nav'
-import { Toaster } from '@/components/ui/toaster'
-import Script from 'next/script'
+import { FileSystemProvider } from '../infrastructure/contexts/FileSystemContext'
+import { CompanyProvider } from '../infrastructure/contexts/CompanyContext'
+import { GoogleDriveProvider } from '../infrastructure/contexts/GoogleDriveContext'
+import { Navigation } from '../components/Navigation'
+import { TaxSettingsProvider } from '@/infrastructure/contexts/TaxSettingsContext'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -23,23 +22,17 @@ export default function RootLayout({
     return (
         <html lang="en">
             <head>
-                {/* We'll load scripts dynamically in GoogleDriveContext */}
             </head>
-            <body className={inter.className}>
+            <body className={inter.className + " h-screen overflow-hidden"}>
                 <FileSystemProvider>
                     <GoogleDriveProvider>
                         <CompanyProvider>
-                            <div className="flex min-h-screen flex-col">
-                                <div className="border-b">
-                                    <div className="container flex h-16 items-center px-4">
-                                        <MainNav />
-                                    </div>
-                                </div>
-                                <main className="flex-1 container py-6 px-4">
+                            <TaxSettingsProvider>
+                                <Navigation />
+                                <main className="h-[calc(100vh-4rem)] overflow-hidden">
                                     {children}
                                 </main>
-                            </div>
-                            <Toaster />
+                            </TaxSettingsProvider>
                         </CompanyProvider>
                     </GoogleDriveProvider>
                 </FileSystemProvider>

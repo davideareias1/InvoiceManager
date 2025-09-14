@@ -1,0 +1,42 @@
+{
+  "id": "8bd1cbd0-f3a0-469a-aff9-5127293f06dc",
+  "invoice_number": "001",
+  "invoice_date": "2025-03-24",
+  "due_date": "2025-04-07",
+  "notes": "",
+  "client_name": "Joule Tech UG",
+  "client_address": "Vor dem Kreuzberg 17\n72072",
+  "client_vat_id": "",
+  "client_vat_exempt": true,
+  "tax_exemption_reason": "Gemäß § 19 UStG keine Umsatzsteuer (Kleinunternehmerregelung)",
+  "tax_rate": 0,
+  "issuer": {
+    "name": "AREIAS IT",
+    "address": "Sarchhalde 15,",
+    "city": "72072 Tübingen"
+  },
+  "customer": {
+    "name": "Joule Tech UG",
+    "address": "Vor dem Kreuzberg 17",
+    "city": "72072",
+    "number": "",
+    "id": "786215b5-e1ca-417f-80d9-5b087c6118ce",
+    "createdAt": "2025-03-24T14:52:35.749Z",
+    "updatedAt": "2025-03-24T14:52:35.749Z"
+  },
+  "items": [
+    {
+      "name": "Beratung und Projektunterstützung gemäß Dienstleistungsvertrag",
+      "quantity": 1,
+      "price": 3500
+    }
+  ],
+  "total": 3500,
+  "bank_details": {
+    "name": "Millennium bcp",
+    "iban": "PT50003300004526488597405",
+    "bic": "BCOMPTPL"
+  },
+  "is_paid": true,
+  "status": null
+}

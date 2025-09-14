@@ -1,0 +1,47 @@
+{
+  "id": "c4a079b2-dc24-422e-b04f-f46f0a481e47",
+  "invoice_number": "009",
+  "invoice_date": "2025-08-02",
+  "due_date": "2025-08-16",
+  "notes": "",
+  "client_name": "Striatech GmbH",
+  "client_address": "Vor dem Kreuzberg 17, Tübingen\n72070",
+  "client_vat_id": "",
+  "client_vat_exempt": false,
+  "tax_exemption_reason": "Gemäß § 19 UStG keine Umsatzsteuer (Kleinunternehmerregelung)",
+  "tax_rate": 0,
+  "issuer": {
+    "name": "Davide Figueiredo Areias",
+    "address": "Königsberger Straße",
+    "city": "Tübingen 72072"
+  },
+  "customer": {
+    "id": "5e1bbd61-baf9-4e2c-8cdb-94a487d405ee",
+    "name": "Striatech GmbH",
+    "address": "Vor dem Kreuzberg 17, Tübingen",
+    "city": "72070",
+    "number": "",
+    "lastModified": "",
+    "createdAt": "2025-07-03T13:23:56.947Z",
+    "updatedAt": "2025-07-03T13:23:56.947Z"
+  },
+  "items": [
+    {
+      "name": "Softwareentwicklung – OptoDrum-Projekt (Abrechnung nach Stunden)",
+      "quantity": 101.5,
+      "price": 40,
+      "description": ""
+    }
+  ],
+  "total": 4060,
+  "bank_details": {
+    "name": "Millennium bcp",
+    "iban": "PT50003300004526488597405",
+    "bic": "BCOMPTPL"
+  },
+  "is_paid": true,
+  "lastModified": "2025-08-15T11:42:21.177Z",
+  "isRectified": false,
+  "isDeleted": false,
+  "status": null
+}
