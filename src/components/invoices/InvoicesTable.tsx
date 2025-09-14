@@ -25,8 +25,8 @@ export function InvoicesTable({ invoices, isLoading, onTogglePaid, onDownload, o
                         <TableHead className="w-[10%]">Date</TableHead>
                         <TableHead className="w-[20%]">Customer</TableHead>
                         <TableHead className="w-[10%]">Amount</TableHead>
-                        <TableHead className="w-[15%]">Status</TableHead>
-                        <TableHead className="w-[25%]">Actions</TableHead>
+                        <TableHead className="w-[10%]">Status</TableHead>
+                        <TableHead className="w-[30%]">Actions</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
