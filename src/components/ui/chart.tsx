@@ -44,7 +44,9 @@ const ChartLine = RechartsPrimitive.Line
 
 const ChartTooltipContent = React.forwardRef<
     HTMLDivElement,
-    React.ComponentPropsWithoutRef<typeof RechartsPrimitive.Tooltip>
+    React.ComponentPropsWithoutRef<typeof RechartsPrimitive.Tooltip> & {
+        className?: string
+    }
 >(({ className, ...props }, ref) => (
     <div
         ref={ref}
