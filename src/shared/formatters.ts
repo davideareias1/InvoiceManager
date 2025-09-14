@@ -11,6 +11,18 @@ export function formatCurrency(amount: number): string {
 }
 
 /**
+ * Format a number as currency (€) without cents
+ */
+export function formatCurrencyNoCents(amount: number): string {
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(Math.round(amount));
+}
+
+/**
  * Format a quantity number (removes unnecessary decimal places)
  */
 export function formatQuantity(quantity: number): string {

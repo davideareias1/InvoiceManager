@@ -9,6 +9,7 @@ const CUSTOMERS_DIRECTORY = 'customers';
 const PRODUCTS_DIRECTORY = 'products';
 const INVOICES_DIRECTORY = 'invoices';
 const COMPANY_INFO_FILENAME = 'company_info.json';
+const PERSONAL_TAX_SETTINGS_FILENAME = 'personal_tax_settings.json';
 
 // Type definition for FileSystemDirectoryHandle since it might not be recognized in TypeScript
 declare global {
@@ -710,6 +711,44 @@ export async function loadCompanyInfoFromFile(): Promise<any | null> {
         }
         console.error('Error loading company info from file:', error);
         return null; // Return null on other errors
+    }
+}
+
+/**
+ * Save personal tax settings to a single JSON file.
+ */
+export async function savePersonalTaxSettingsToFile(settings: any): Promise<void> {
+    try {
+        const handle = await getVerifiedDirectoryHandle();
+        const fileHandle = await handle.getFileHandle(PERSONAL_TAX_SETTINGS_FILENAME, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(settings, null, 2));
+        await writable.close();
+    } catch (error) {
+        console.error('Error saving personal tax settings:', error);
+        throw error;
+    }
+}
+
+/**
+ * Load personal tax settings from file.
+ */
+export async function loadPersonalTaxSettingsFromFile(): Promise<any | null> {
+    try {
+        const handle = await getVerifiedDirectoryHandle();
+        const fileHandle = await handle.getFileHandle(PERSONAL_TAX_SETTINGS_FILENAME);
+        const file = await fileHandle.getFile();
+        const contents = await file.text();
+        return JSON.parse(contents);
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'NotFoundError') {
+            return null;
+        }
+        if (error instanceof Error && error.message.includes('Permission denied')) {
+            return null;
+        }
+        console.error('Error loading personal tax settings:', error);
+        return null;
     }
 }
 

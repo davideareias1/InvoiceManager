@@ -9,6 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { useCompany } from '../../infrastructure/contexts/CompanyContext';
 import { CompanyInfo } from '../../domain/models';
+import { useTaxSettings } from '@/infrastructure/contexts/TaxSettingsContext';
+import { PersonalTaxSettings } from '@/domain/models';
 
 interface ValidationErrors {
     [key: string]: string;
@@ -17,6 +19,8 @@ interface ValidationErrors {
 export default function SettingsPage() {
     const { companyInfo, updateCompanyInfo, resetCompanyInfo, logoFile, setLogoFile } = useCompany();
     const [formData, setFormData] = useState<CompanyInfo>(companyInfo);
+    const { taxSettings, updateTaxSettings, resetTaxSettings } = useTaxSettings();
+    const [taxForm, setTaxForm] = useState<PersonalTaxSettings>(taxSettings);
     const [isLoading, setIsLoading] = useState(false);
     const [saveMessage, setSaveMessage] = useState<string>('');
     const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
@@ -25,6 +29,11 @@ export default function SettingsPage() {
     useEffect(() => {
         setFormData(companyInfo);
     }, [companyInfo]);
+
+    // Sync local tax form when context changes
+    useEffect(() => {
+        setTaxForm(taxSettings);
+    }, [taxSettings]);
 
     const validateForm = (): boolean => {
         const errors: ValidationErrors = {};
@@ -102,6 +111,7 @@ export default function SettingsPage() {
         setSaveMessage('');
         try {
             await updateCompanyInfo(formData);
+            await updateTaxSettings(taxForm);
             setSaveMessage('Settings saved successfully!');
             setTimeout(() => setSaveMessage(''), 3000);
         } catch (error) {
@@ -117,6 +127,7 @@ export default function SettingsPage() {
             setIsLoading(true);
             try {
                 await resetCompanyInfo();
+                await resetTaxSettings();
                 setSaveMessage('Settings reset to defaults.');
                 setTimeout(() => setSaveMessage(''), 3000);
             } catch (error) {
@@ -126,6 +137,19 @@ export default function SettingsPage() {
                 setIsLoading(false);
             }
         }
+    };
+
+    const handleTaxInputChange = (field: keyof PersonalTaxSettings, value: string | number | boolean) => {
+        setTaxForm(prev => ({
+            ...prev,
+            [field]: value,
+        }));
+    };
+
+    const handleSaveTax = async () => {
+        await updateTaxSettings(taxForm);
+        setSaveMessage('Tax settings saved.');
+        setTimeout(() => setSaveMessage(''), 3000);
     };
 
     const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -139,7 +163,7 @@ export default function SettingsPage() {
     };
 
     return (
-        <div className="p-6 max-w-4xl mx-auto space-y-6">
+        <div className="p-6 h-[calc(100vh-4rem)] overflow-auto max-w-4xl mx-auto space-y-6">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold">Settings</h1>
@@ -448,6 +472,66 @@ export default function SettingsPage() {
                             placeholder="Bank account number"
                         />
                     </div>
+                </CardContent>
+            </Card>
+
+            {/* Personal Taxes (Germany) */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Personal Taxes (Germany)</CardTitle>
+                    <CardDescription>Optional inputs to estimate income tax, church tax, and solidarity surcharge</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                            <Label htmlFor="church-tax-rate">Church Tax Rate (%)</Label>
+                            <Input
+                                id="church-tax-rate"
+                                type="number"
+                                min="0"
+                                max="20"
+                                step="1"
+                                value={taxForm.churchTaxRatePercent}
+                                onChange={e => handleTaxInputChange('churchTaxRatePercent', parseFloat(e.target.value) || 0)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="deductible-expenses">Annual Deductible Expenses (€)</Label>
+                            <Input
+                                id="deductible-expenses"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={taxForm.annualDeductibleExpenses}
+                                onChange={e => handleTaxInputChange('annualDeductibleExpenses', parseFloat(e.target.value) || 0)}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                            <Label htmlFor="prepayments">Prepayments YTD (€)</Label>
+                            <Input
+                                id="prepayments"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={taxForm.prepaymentsYearToDate}
+                                onChange={e => handleTaxInputChange('prepaymentsYearToDate', parseFloat(e.target.value) || 0)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <div className="flex items-center space-x-3">
+                                <Switch
+                                    id="joint-assessment"
+                                    checked={taxForm.jointAssessment}
+                                    onCheckedChange={checked => handleTaxInputChange('jointAssessment', checked)}
+                                />
+                                <Label htmlFor="joint-assessment">Joint Assessment (married)</Label>
+                            </div>
+                        </div>
+                    </div>
+
                 </CardContent>
             </Card>
         </div>

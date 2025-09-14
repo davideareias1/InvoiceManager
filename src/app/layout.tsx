@@ -5,6 +5,7 @@ import { FileSystemProvider } from '../infrastructure/contexts/FileSystemContext
 import { CompanyProvider } from '../infrastructure/contexts/CompanyContext'
 import { GoogleDriveProvider } from '../infrastructure/contexts/GoogleDriveContext'
 import { Navigation } from '../components/Navigation'
+import { TaxSettingsProvider } from '@/infrastructure/contexts/TaxSettingsContext'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -26,10 +27,12 @@ export default function RootLayout({
                 <FileSystemProvider>
                     <GoogleDriveProvider>
                         <CompanyProvider>
-                            <Navigation />
-                            <main className="h-[calc(100vh-4rem)] overflow-hidden">
-                                {children}
-                            </main>
+                            <TaxSettingsProvider>
+                                <Navigation />
+                                <main className="h-[calc(100vh-4rem)] overflow-hidden">
+                                    {children}
+                                </main>
+                            </TaxSettingsProvider>
                         </CompanyProvider>
                     </GoogleDriveProvider>
                 </FileSystemProvider>

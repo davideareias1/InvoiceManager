@@ -142,3 +142,18 @@ export interface InvoiceRepository {
     searchInvoices(query: string): Invoice[];
     generateNextInvoiceNumber(): Promise<string>;
 } 
+
+// Personal tax settings for German income tax, church tax, solidarity surcharge
+export interface PersonalTaxSettings {
+    id: string; // constant id like 'personal_tax_settings'
+    churchTaxRatePercent: number; // 0, 8, or 9
+    annualDeductibleExpenses: number; // EUR per year
+    prepaymentsYearToDate: number; // EUR paid to tax office YTD
+    jointAssessment: boolean; // Married joint assessment (splitting tariff approximation)
+    lastModified: string;
+}
+
+export interface TaxSettingsRepository {
+    loadPersonalTaxSettings(): Promise<PersonalTaxSettings | null>;
+    savePersonalTaxSettings(settings: Partial<PersonalTaxSettings>): Promise<PersonalTaxSettings>;
+}
