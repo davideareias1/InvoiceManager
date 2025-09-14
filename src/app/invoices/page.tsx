@@ -3,11 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import DatePicker from 'react-datepicker';
-import { RotateCcw } from 'lucide-react';
+import { AlertDialog } from '@/components/ui/alert-dialog';
 import { useFileSystem } from '../../infrastructure/contexts/FileSystemContext';
+import { isFileSystemAccessSupported } from '../../infrastructure/filesystem/fileSystemStorage';
 import { getSavedDirectoryHandle, setDirectoryHandle as setFsHandle } from '../../infrastructure/filesystem/fileSystemStorage';
 import { setDirectoryHandle as setCustomerHandle } from '../../infrastructure/repositories/customerRepository';
 import { setDirectoryHandle as setProductHandle } from '../../infrastructure/repositories/productRepository';
@@ -17,13 +15,23 @@ import { generateInvoicePDF } from '../../infrastructure/pdf/pdfUtils';
 import { Invoice, InvoiceStatus } from '../../domain/models';
 import { formatCurrency, formatDate } from '../../shared/formatters';
 import { format as formatDateFn } from 'date-fns';
+import { InvoicesFilters } from '@/components/invoices/InvoicesFilters';
+import { DeleteDialog } from '@/components/invoices/DeleteDialog';
+import { RectifyDialog } from '@/components/invoices/RectifyDialog';
+import type { StatusFilter } from '@/components/invoices/types';
+import { getDisplayStatus, getStatusLabel } from '@/application/invoices/presentation';
+import { InvoicesTable } from '@/components/invoices/InvoicesTable';
+import { InvoicesPagination } from '@/components/invoices/InvoicesPagination';
+import { useCompany } from '../../infrastructure/contexts/CompanyContext';
 
-type StatusFilter = 'all' | InvoiceStatus.Unpaid | InvoiceStatus.Paid | InvoiceStatus.Overdue | InvoiceStatus.Rectified;
+// helpers and dialogs are now imported from application/components layers
 
 export default function InvoicesPage() {
     const { isInitialized, hasPermission, loadInvoices, refreshInvoices, requestPermission } = useFileSystem();
+    const isFSA = typeof window !== 'undefined' && isFileSystemAccessSupported();
     const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const { companyInfo } = useCompany();
 
     // Filters
     const [query, setQuery] = useState('');
@@ -88,43 +96,7 @@ export default function InvoicesPage() {
         return ['all', ...Array.from(set).sort()];
     }, [allInvoices]);
 
-    function getStatusLabel(invoice: Invoice): InvoiceStatus {
-        if (invoice.status === InvoiceStatus.Rectified || invoice.isRectified) return InvoiceStatus.Rectified;
-        if (invoice.is_paid) return InvoiceStatus.Paid;
-        if (
-            invoice.status === InvoiceStatus.Unpaid ||
-            invoice.status === InvoiceStatus.Paid ||
-            invoice.status === InvoiceStatus.Overdue
-        ) {
-            return invoice.status;
-        }
-        // Derive when missing: overdue if past due date, else unpaid
-        if (invoice.due_date) {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const due = new Date(invoice.due_date);
-            if (!isNaN(due.getTime())) {
-                due.setHours(0, 0, 0, 0);
-                if (due.getTime() < today.getTime()) return InvoiceStatus.Overdue;
-            }
-        }
-        return InvoiceStatus.Unpaid;
-    }
-
-    function isRectificationInvoice(invoice: Invoice): boolean {
-        if (typeof invoice.total === 'number' && invoice.total < 0) return true;
-        if (Array.isArray(invoice.items) && invoice.items.some(i => typeof i.price === 'number' && i.price < 0)) return true;
-        const notes = (invoice.notes || '').toLowerCase();
-        if (notes.includes('stornorechnung') || notes.includes('storno')) return true;
-        const firstName = (invoice.items?.[0]?.name || '').toLowerCase();
-        if (firstName.includes('stornorechnung')) return true;
-        return false;
-    }
-
-    function getDisplayStatus(invoice: Invoice): string {
-        if (isRectificationInvoice(invoice)) return 'Rectification';
-        return getStatusLabel(invoice);
-    }
+    // helpers are defined at file scope: getStatusLabel, isRectificationInvoice, getDisplayStatus
 
     // Filtered invoices
     const filtered = useMemo(() => {
@@ -147,11 +119,32 @@ export default function InvoicesPage() {
         if (query.trim()) {
             const q = query.toLowerCase();
             list = list.filter(inv => {
+                const numberStr = (inv.invoice_number || '').toLowerCase();
+                const rawDateStr = (inv.invoice_date || '').toLowerCase();
+                const formattedDateStr = (formatDate(inv.invoice_date) || '').toLowerCase();
+                const customerStr = (inv.customer?.name || '').toLowerCase();
+                const notesStr = (inv.notes || '').toLowerCase();
+                const emailStr = (inv.client_email || '').toLowerCase();
+                const amountRawStr = (typeof inv.total === 'number' ? String(inv.total) : '').toLowerCase();
+                const amountFormattedStr = (typeof inv.total === 'number' ? formatCurrency(inv.total) : '').toLowerCase();
+                const statusStr = String(getDisplayStatus(inv) || '').toLowerCase();
+                const rectifiedStr = (inv.rectifiedBy
+                    ? `rectified by #${inv.rectifiedBy}`
+                    : (inv.isRectified || inv.status === InvoiceStatus.Rectified)
+                        ? 'rectified'
+                        : '').toLowerCase();
+
                 return (
-                    (inv.invoice_number || '').toLowerCase().includes(q) ||
-                    (inv.customer?.name || '').toLowerCase().includes(q) ||
-                    (inv.notes || '').toLowerCase().includes(q) ||
-                    (inv.client_email || '').toLowerCase().includes(q)
+                    numberStr.includes(q) ||
+                    rawDateStr.includes(q) ||
+                    formattedDateStr.includes(q) ||
+                    customerStr.includes(q) ||
+                    amountRawStr.includes(q) ||
+                    amountFormattedStr.includes(q) ||
+                    statusStr.includes(q) ||
+                    rectifiedStr.includes(q) ||
+                    notesStr.includes(q) ||
+                    emailStr.includes(q)
                 );
             });
         }
@@ -201,7 +194,7 @@ export default function InvoicesPage() {
 
     const download = async (invoice: Invoice) => {
         try {
-            const blob = await generateInvoicePDF(invoice, invoice.issuer as any);
+            const blob = await generateInvoicePDF(invoice, companyInfo);
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -271,7 +264,13 @@ export default function InvoicesPage() {
                         <div className="text-sm text-neutral-600">
                             Grant access to your InvoiceManager folder to load invoices. Select the folder that contains the subfolders "invoices", "customers", and "products".
                         </div>
-                        <Button onClick={handleGrantAccess} disabled={isLoading}>{isLoading ? 'Processing…' : 'Grant Folder Access'}</Button>
+                        <Button onClick={handleGrantAccess} disabled={isLoading || !isFSA}>{isLoading ? 'Processing…' : (isFSA ? 'Grant Folder Access' : 'Folder Access Not Supported') }</Button>
+                        {!isFSA && (
+                            <div className="text-sm text-neutral-600">
+                                Your browser does not support selecting a local folder. On Firefox, this feature is unavailable.
+                                You can still use the app to generate and download PDFs, or switch to a Chromium-based browser (Chrome, Edge, Brave) to enable folder access.
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>
@@ -279,148 +278,59 @@ export default function InvoicesPage() {
     }
 
     return (
-        <div className="p-6 space-y-4">
-            <Card>
-                <CardHeader>
+        <div className="p-6 h-[calc(100vh-4rem)] box-border flex flex-col">
+            <Card className="flex-1 flex min-h-0">
+                <CardHeader className="shrink-0">
                     <CardTitle>Invoices</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                    <div className="flex flex-wrap gap-2 items-center">
-                        <Input placeholder="Search" value={query} onChange={e => setQuery(e.target.value)} />
-                        <select className="h-9 rounded-md border border-neutral-200 px-2 text-sm" value={status} onChange={e => setStatus(e.target.value as StatusFilter)}>
-                            <option value="all">All statuses</option>
-                            <option value={InvoiceStatus.Unpaid}>Unpaid</option>
-                            <option value={InvoiceStatus.Paid}>Paid</option>
-                            <option value={InvoiceStatus.Overdue}>Overdue</option>
-                            <option value={InvoiceStatus.Rectified}>Rectified</option>
-                        </select>
-                        <select className="h-9 rounded-md border border-neutral-200 px-2 text-sm" value={customer} onChange={e => setCustomer(e.target.value)}>
-                            {customers.map(c => (
-                                <option key={c} value={c}>{c === 'all' ? 'All customers' : c}</option>
-                            ))}
-                        </select>
-                        <DatePicker
-                            selectsRange
-                            monthsShown={2}
-                            startDate={dateRange[0]}
-                            endDate={dateRange[1]}
-                            onChange={(update: [Date | null, Date | null]) => {
-                                setDateRange(update);
-                                const [start, end] = update;
-                                setFromDate(start ? formatDateFn(start, 'yyyy-MM-dd') : '');
-                                setToDate(end ? formatDateFn(end, 'yyyy-MM-dd') : '');
-                            }}
-                            placeholderText="Date range"
-                            className="h-9 rounded-md border border-neutral-200 px-3 text-sm bg-white shadow-sm"
-                            popperClassName="!z-50"
+                <CardContent className="flex-1 min-h-0 flex flex-col space-y-3">
+                    <InvoicesFilters
+                        query={query}
+                        setQuery={setQuery}
+                        status={status}
+                        setStatus={setStatus}
+                        customers={customers}
+                        customer={customer}
+                        setCustomer={setCustomer}
+                        dateRange={dateRange}
+                        setDateRange={setDateRange}
+                        fromDate={fromDate}
+                        toDate={toDate}
+                        setFromDate={setFromDate}
+                        setToDate={setToDate}
+                        perPage={perPage}
+                        setPerPage={setPerPage}
+                        resetFilters={resetFilters}
+                    />
+
+                    <div className="flex-1 min-h-0">
+                        <InvoicesTable
+                            invoices={current}
+                            isLoading={isLoading}
+                            onTogglePaid={togglePaid}
+                            onDownload={download}
+                            onRectify={setConfirmRectifyFor}
+                            onDelete={setConfirmDeleteFor}
                         />
-                        {(fromDate || toDate) && (
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                aria-label="Clear date range"
-                                title="Clear date range"
-                                onClick={() => {
-                                    setDateRange([null, null]);
-                                    setFromDate('');
-                                    setToDate('');
-                                }}
-                            >
-                                <RotateCcw className="h-4 w-4" />
-                            </Button>
-                        )}
-                        <Button variant="outline" onClick={resetFilters}>Reset</Button>
-                        <div className="ml-auto flex items-center gap-2">
-                            <span className="text-sm text-neutral-500">Per page</span>
-                            <select className="h-9 rounded-md border border-neutral-200 px-2 text-sm" value={perPage} onChange={e => setPerPage(parseInt(e.target.value, 10))}>
-                                {[10, 20, 50].map(n => (
-                                    <option key={n} value={n}>{n}</option>
-                                ))}
-                            </select>
-                        </div>
                     </div>
 
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm border-collapse">
-                            <thead>
-                                <tr className="border-b border-neutral-200 text-left">
-                                    <th className="py-2 pr-3">Number</th>
-                                    <th className="py-2 pr-3">Date</th>
-                                    <th className="py-2 pr-3">Customer</th>
-                                    <th className="py-2 pr-3 text-right">Amount</th>
-                                    <th className="py-2 pr-3">Status</th>
-                                    <th className="py-2 pr-3">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {isLoading ? (
-                                    <tr><td className="py-4" colSpan={6}>Loading…</td></tr>
-                                ) : current.length === 0 ? (
-                                    <tr><td className="py-4" colSpan={6}>No invoices found.</td></tr>
-                                ) : current.map(inv => (
-                                    <tr key={inv.id} className="border-b border-neutral-100">
-                                        <td className="py-2 pr-3 font-medium">{inv.invoice_number}</td>
-                                        <td className="py-2 pr-3">{formatDate(inv.invoice_date)}</td>
-                                        <td className="py-2 pr-3">{inv.customer?.name || '-'}</td>
-                                        <td className="py-2 pr-3 text-right">{formatCurrency(inv.total)}</td>
-                                        <td className="py-2 pr-3">{getDisplayStatus(inv)}{(inv.status === InvoiceStatus.Rectified || inv.isRectified) && inv.rectifiedBy ? ` (rectified by #${inv.rectifiedBy})` : ''}</td>
-                                        <td className="py-2 pr-3">
-                                            <div className="flex flex-wrap gap-2">
-                                                <Button size="sm" variant="outline" onClick={() => togglePaid(inv)}>{inv.is_paid ? 'Mark unpaid' : 'Mark paid'}</Button>
-                                                <Button size="sm" variant="outline" onClick={() => download(inv)}>Download</Button>
-                                                <Button size="sm" variant="outline" onClick={() => setConfirmRectifyFor(inv)}>Rectify</Button>
-                                                <Button size="sm" variant="destructive" onClick={() => setConfirmDeleteFor(inv)}>Delete</Button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2">
-                        <div className="text-sm text-neutral-500">Page {page} of {totalPages}</div>
-                        <div className="flex gap-2">
-                            <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>Previous</Button>
-                            <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>Next</Button>
-                        </div>
-                    </div>
+                    <InvoicesPagination page={page} totalPages={totalPages} setPage={setPage} />
                     
-                    {/* Rectify confirmation dialog */}
-                    <AlertDialog open={!!confirmRectifyFor} onOpenChange={(open) => { if (!open) setConfirmRectifyFor(null); }}>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Rectify invoice #{confirmRectifyFor?.invoice_number}</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    This will create a rectification (negative) invoice and mark the original as rectified.
-                                </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
-                                <AlertDialogAction disabled={isLoading} onClick={() => confirmRectifyFor && performRectify(confirmRectifyFor)}>
-                                    Create rectification
-                                </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
+                    <RectifyDialog
+                        open={!!confirmRectifyFor}
+                        invoice={confirmRectifyFor}
+                        isLoading={isLoading}
+                        onCancel={() => setConfirmRectifyFor(null)}
+                        onConfirm={performRectify}
+                    />
 
-                    {/* Delete confirmation dialog */}
-                    <AlertDialog open={!!confirmDeleteFor} onOpenChange={(open) => { if (!open) setConfirmDeleteFor(null); }}>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Delete invoice #{confirmDeleteFor?.invoice_number}</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    This action cannot be undone. This will permanently delete the invoice from your storage.
-                                </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
-                                <AlertDialogAction disabled={isLoading} onClick={() => confirmDeleteFor && performDelete(confirmDeleteFor)}>
-                                    Delete invoice
-                                </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
+                    <DeleteDialog
+                        open={!!confirmDeleteFor}
+                        invoice={confirmDeleteFor}
+                        isLoading={isLoading}
+                        onCancel={() => setConfirmDeleteFor(null)}
+                        onConfirm={performDelete}
+                    />
                 </CardContent>
             </Card>
         </div>

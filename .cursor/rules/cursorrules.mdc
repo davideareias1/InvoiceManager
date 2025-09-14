@@ -1,0 +1,96 @@
+---
+description: InvoiceManager architecture and coding conventions (DDD, component-first, page structure)
+globs:
+  - "src/**/*"
+  - "*.ts"
+  - "*.tsx"
+alwaysApply: true
+---
+
+### High-level principles
+- **Component-first UI**: Pages compose feature components. Keep pages thin; extract UI into `src/components/<feature>/*`.
+- **Pragmatic DDD**: Separate concerns across domain, application, infrastructure, and interface (app/components) layers.
+- **Clear imports**: Follow strict import boundaries (see below) to keep dependencies clean.
+- **Readable sections**: Use consistent comment blocks to divide logic in pages and complex components (see "Section headers").
+
+### Layers and responsibilities
+- **Domain (`src/domain`)**
+  - Pure models/enums. No framework or infra imports.
+  - May import from `src/shared/*` only for value helpers/types if unavoidable.
+- **Application (`src/application`)**
+  - Orchestrates use cases and presentation helpers (derive UI-friendly values from domain entities).
+  - No direct I/O. Depends only on `domain` and `shared`.
+- **Infrastructure (`src/infrastructure`)**
+  - Adapters to file system, Google Drive, repositories, PDF, and provider contexts.
+  - Implements persistence APIs consumed by application/usecases.
+  - Must not import from `app` or `components`.
+- **Interface (Next.js app + Components)**
+  - Pages in `src/app/**` should be orchestration-only; render and compose components, handle state/effects.
+  - Components in `src/components/**` implement UI; feature UIs live in `src/components/<feature>/*`.
+
+### Import boundaries (Allowed →)
+- `domain` → none
+- `application` → domain, shared
+- `infrastructure` → domain, shared
+- `components` → application, domain, shared, components/ui
+- `app` (routes/pages) → components, application, domain, shared
+
+Disallowed:
+- `domain` importing from `application` or `infrastructure`.
+- `components` or `app` importing from `infrastructure` directly (use contexts/adapters exposed to UI layer).
+
+### Feature/page structure
+- New feature skeleton:
+  - `src/components/<feature>/` for all feature UI components.
+  - `src/application/<feature>/` for use cases and presentation helpers.
+  - `src/infrastructure/<area>/` for repositories/adapters if persistence or external I/O is needed.
+  - `src/app/<feature>/page.tsx` composes the feature components and orchestrates state/effects.
+- Keep pages lean: stateful orchestration + composition. Push business/presentation logic to `application`, UI to `components`.
+
+### Component-first guidelines
+- Extract: filters, tables, dialogs, pagination, complex forms into dedicated components.
+- Components must have explicit prop types. Prefer smaller, focused components.
+- Client components include the `"use client"` directive when needed.
+
+### Styling & UI toolkit
+- Use **TailwindCSS** for styling (`globals.css`, utility-first classes).
+- Prefer **shadcn/ui** components for UI primitives. When adding UI, install/generate shadcn components rather than custom-building from scratch, unless there is a strong reason.
+
+### Section headers (standard comment blocks)
+Use these headers to divide logic in pages and complex components. Keep them brief and consistent.
+- `// ===== IMPORTS =====` (optional in large files)
+- `// ===== TYPES =====`
+- `// ===== HOOKS & EXTERNAL STATE =====` (contexts)
+- `// ===== LOCAL STATE =====` (filters, pagination, dialogs)
+- `// ===== DERIVED/COMPUTED =====` (useMemo)
+- `// ===== EFFECTS =====` (useEffect)
+- `// ===== ACTION HANDLERS =====` (callbacks)
+- `// ===== RENDER =====`
+
+### TypeScript and naming
+- Prefer explicit function signatures for exported APIs.
+- Descriptive names; avoid 1–2 character identifiers. Variables are nouns; functions are verbs.
+- Components: PascalCase. Utilities: camelCase. Enums: PascalCase with PascalCase members.
+
+### Formatting & style
+- Match existing formatting; multi-line for readability; early returns and guard clauses.
+- Handle errors meaningfully; no empty catch blocks.
+- Avoid unrelated reformatting in edits.
+
+### Shared utilities and types
+- `src/shared/*` for cross-cutting utilities (formatting, dates, money, notifications, storage abstractions).
+- `src/types/*` for ambient or third-party type declarations.
+
+### Checklist
+- Respect import boundaries.
+- Keep pages thin; extract UI to components.
+- Move business/presentation logic into `application` when it grows beyond trivial.
+- No direct infra imports in pages/components.
+- Run lint and typecheck locally before PR.
+
+### Examples (current code)
+- Presentation helpers: `src/application/invoices/presentation.ts`
+- Repositories: `src/infrastructure/repositories/invoiceRepository.ts`
+- Contexts: `src/infrastructure/contexts/FileSystemContext.tsx`
+- Feature UI: `src/components/invoices/*`
+- Page: `src/app/invoices/page.tsx`

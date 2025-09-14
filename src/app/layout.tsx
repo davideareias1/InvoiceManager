@@ -4,6 +4,7 @@ import './globals.css'
 import { FileSystemProvider } from '../infrastructure/contexts/FileSystemContext'
 import { CompanyProvider } from '../infrastructure/contexts/CompanyContext'
 import { GoogleDriveProvider } from '../infrastructure/contexts/GoogleDriveContext'
+import { Navigation } from '../components/Navigation'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -21,11 +22,12 @@ export default function RootLayout({
         <html lang="en">
             <head>
             </head>
-            <body className={inter.className}>
+            <body className={inter.className + " h-screen overflow-hidden"}>
                 <FileSystemProvider>
                     <GoogleDriveProvider>
                         <CompanyProvider>
-                            <main>
+                            <Navigation />
+                            <main className="h-[calc(100vh-4rem)] overflow-hidden">
                                 {children}
                             </main>
                         </CompanyProvider>

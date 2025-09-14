@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-import 'pdfjs-dist/web/pdf_viewer.css';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf';
 
 // Configure worker
 // @ts-ignore - pdfjs-dist ships the worker file
@@ -33,11 +32,11 @@ export function PdfViewer({ src, className }: PdfViewerProps) {
                 const page = await pdf.getPage(pageNum);
                 if (isCancelled) return;
 
-                const viewport = page.getViewport({ scale: 1.25 });
+                const viewport = page.getViewport({ scale: 0.9 });
                 const canvas = document.createElement('canvas');
                 canvas.style.width = '100%';
                 canvas.style.height = 'auto';
-                canvas.className = 'block rounded border border-neutral-200 bg-white';
+                canvas.className = 'block mx-auto rounded border border-neutral-200 bg-white';
                 const context = canvas.getContext('2d');
                 if (!context) continue;
 
@@ -65,10 +64,10 @@ export function PdfViewer({ src, className }: PdfViewerProps) {
 
     return (
         <div className={className}>
-            <div className="flex items-center justify-between py-2 px-3 border-b border-neutral-200 bg-neutral-50 rounded-t">
-                <div className="text-sm text-neutral-600">PDF Preview {numPages ? `( ${numPages} page${numPages > 1 ? 's' : ''} )` : ''}</div>
+            <div className="flex items-center justify-between py-1 px-3 border-b border-neutral-200 bg-neutral-50 rounded-t">
+                <div className="text-xs text-neutral-600">PDF Preview {numPages ? `( ${numPages} page${numPages > 1 ? 's' : ''} )` : ''}</div>
             </div>
-            <div ref={containerRef} className="p-3 space-y-4 overflow-auto h-[70vh]" />
+            <div ref={containerRef} className="p-2 space-y-3 overflow-auto h-[68vh] flex flex-col items-center" />
         </div>
     );
 }

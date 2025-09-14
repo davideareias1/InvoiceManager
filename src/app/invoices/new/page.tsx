@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -17,7 +18,7 @@ import { addDays, format } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import type { CompanyInfo, CustomerData, Invoice, InvoiceItem, ProductData } from '@/domain/models';
 import { showSuccess, showError } from '@/shared/notifications';
-import { PdfViewer } from '@/components/PdfViewer';
+const PdfViewer = dynamic(() => import('@/components/PdfViewer').then(m => m.PdfViewer), { ssr: false });
 
 type Step = 'edit' | 'preview';
 
@@ -314,12 +315,12 @@ export default function NewInvoicePage() {
     }
 
     return (
-        <div className="p-6 space-y-4">
+        <div className={`space-y-4 ${step === 'preview' ? 'p-3' : 'p-6'}`}>
             <Card>
                 <CardHeader>
                     <CardTitle>New Invoice</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className={step === 'preview' ? 'space-y-2' : 'space-y-4'}>
                     {step === 'edit' && (
                         <div className="space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
@@ -581,7 +582,7 @@ export default function NewInvoicePage() {
                     )}
 
                     {step === 'preview' && (
-                        <div className="space-y-4">
+                        <div className="space-y-2">
                             <div className="text-sm text-neutral-600">Preview of invoice #{plannedNumber} (final number assigned on save)</div>
                             {previewUrl ? (
                                 <PdfViewer src={previewUrl} className="border border-neutral-200 rounded" />
