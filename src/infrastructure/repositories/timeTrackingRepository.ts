@@ -29,24 +29,61 @@ async function ensureRoot(): Promise<FileSystemDirectoryHandle> {
     return root;
 }
 
+function daysInMonth(year: number, month: number): number {
+    return new Date(year, month, 0).getDate();
+}
+
 function buildWorkbookFromTimesheet(ts: TimeSheetMonth): XLSX.WorkBook {
-    // Headers: Kalendertag, Beginn, Pause, Ende, Dauer, Bemerkungen
-    const rows: any[][] = [
-        ['Kalendertag', 'Beginn', 'Pause (Min)', 'Ende', 'Dauer (Min)', 'Bemerkungen'],
-        ...ts.entries.map(e => [
+    // Normalize to include ALL days of the month
+    const totalDays = daysInMonth(ts.year, ts.month);
+    const byDate = new Map<string, TimeEntry>();
+    ts.entries.forEach(e => byDate.set(e.date, e));
+
+    const header = ['Kalendertag', 'Beginn', 'Pause (Min)', 'Ende', 'Dauer (Min)', 'Bemerkungen'];
+    const rows: any[][] = [header];
+
+    const metaRows: any[][] = [['id', 'date']];
+
+    for (let d = 1; d <= totalDays; d++) {
+        const date = `${ts.year}-${String(ts.month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const e = byDate.get(date) || {
+            id: crypto.randomUUID(),
+            date,
+            start: '',
+            pauseMinutes: undefined,
+            end: '',
+            durationMinutes: 0,
+            notes: ''
+        };
+        rows.push([
             e.date,
             e.start || '',
             typeof e.pauseMinutes === 'number' ? e.pauseMinutes : '',
             e.end || '',
-            e.durationMinutes,
+            e.durationMinutes || 0,
             e.notes || ''
-        ])
-    ];
+        ]);
+        metaRows.push([e.id, e.date]);
+    }
+
     const ws = XLSX.utils.aoa_to_sheet(rows);
+
+    // Auto column widths based on max content length
+    const colMax = new Array(header.length).fill(0);
+    rows.forEach(r => {
+        for (let i = 0; i < header.length; i++) {
+            const cell = r[i];
+            const str = typeof cell === 'number' ? String(cell) : (cell || '').toString();
+            colMax[i] = Math.max(colMax[i], str.length, header[i].length);
+        }
+    });
+    // Add some padding
+    ws['!cols'] = colMax.map(len => ({ wch: Math.min(60, Math.max(10, len + 2)) }));
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Timesheet');
-    // Metadata sheet for app state (ids)
-    const metaRows: any[][] = [['id', 'date'] , ...ts.entries.map(e => [e.id, e.date])];
+
+    // Metadata sheet for app state (ids for every day)
     const meta = XLSX.utils.aoa_to_sheet(metaRows);
     XLSX.utils.book_append_sheet(wb, meta, '_meta');
     return wb;

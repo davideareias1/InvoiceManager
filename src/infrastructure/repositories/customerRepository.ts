@@ -67,7 +67,13 @@ export const saveCustomer = async (customer: CustomerData): Promise<SavedCustome
         const now = new Date().toISOString();
 
         // Check if this customer already exists based on name
-        const existingIndex = cachedCustomers.findIndex(c => c.name === customer.name);
+        let existingIndex = -1;
+        if (customer.id) {
+            existingIndex = cachedCustomers.findIndex(c => c.id === customer.id);
+        }
+        if (existingIndex === -1 && customer.name) {
+            existingIndex = cachedCustomers.findIndex(c => c.name.toLowerCase() === customer.name.toLowerCase());
+        }
 
         let updatedCustomer: SavedCustomer;
 

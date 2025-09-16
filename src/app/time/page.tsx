@@ -46,7 +46,7 @@ export default function TimePage() {
     }
 
     return (
-        <div className="p-6">
+        <div className="p-6 h-[calc(100vh-6rem)] overflow-auto">
             <Card>
                 <CardHeader>
                     <CardTitle>Customers</CardTitle>

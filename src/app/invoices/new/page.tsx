@@ -6,11 +6,14 @@ import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { useFileSystem } from '@/infrastructure/contexts/FileSystemContext';
 import { getSavedDirectoryHandle, setDirectoryHandle as setFsHandle } from '@/infrastructure/filesystem/fileSystemStorage';
 import { setDirectoryHandle as setCustomerHandle, loadCustomers, searchCustomers, saveCustomer } from '@/infrastructure/repositories/customerRepository';
 import { setDirectoryHandle as setProductHandle, loadProducts, searchProducts, saveProduct } from '@/infrastructure/repositories/productRepository';
 import { setDirectoryHandle as setInvoiceHandle, invoiceRepositoryAdapter } from '@/infrastructure/repositories/invoiceRepository';
+import { setDirectoryHandle as setTimeHandle, loadMonth as loadTimeMonth } from '@/infrastructure/repositories/timeTrackingRepository';
 import { CreateInvoice } from '@/application/usecases';
 import { useCompany } from '@/infrastructure/contexts/CompanyContext';
 import { generateInvoicePDF } from '@/infrastructure/pdf/pdfUtils';
@@ -18,6 +21,7 @@ import { addDays, format } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import type { CompanyInfo, CustomerData, Invoice, InvoiceItem, ProductData } from '@/domain/models';
 import { showSuccess, showError } from '@/shared/notifications';
+import { Pencil, Save } from 'lucide-react';
 const PdfViewer = dynamic(() => import('@/components/PdfViewer').then(m => m.PdfViewer), { ssr: false });
 
 type Step = 'edit' | 'preview';
@@ -37,6 +41,7 @@ export default function NewInvoicePage() {
 
     const [step, setStep] = useState<Step>('edit');
     const [isBusy, setIsBusy] = useState(false);
+    const [isEditingClient, setIsEditingClient] = useState(false);
     const [allCustomers, setAllCustomers] = useState<CustomerData[]>([]);
     const [allProducts, setAllProducts] = useState<ProductData[]>([]);
     const [plannedNumber, setPlannedNumber] = useState<string>('—');
@@ -52,6 +57,7 @@ export default function NewInvoicePage() {
     const [customerAddress, setCustomerAddress] = useState<string>('');
     const [customerCity, setCustomerCity] = useState<string>('');
     const [clientVatId, setClientVatId] = useState<string>('');
+    const [hourlyRate, setHourlyRate] = useState<string>('');
     const [notes, setNotes] = useState<string>('');
     const [items, setItems] = useState<ItemForm[]>([{ name: '', quantity: 1, price: 0, description: '' }]);
 
@@ -82,6 +88,7 @@ export default function NewInvoicePage() {
                     setCustomerHandle(handle);
                     setProductHandle(handle);
                     setInvoiceHandle(handle);
+                    setTimeHandle(handle);
                 }
             } catch (e) {
                 console.warn('Failed to sync directory handle:', e);
@@ -93,8 +100,8 @@ export default function NewInvoicePage() {
                 loadProducts(),
                 loadInvoices(),
             ]);
-            setAllCustomers(customers);
-            setAllProducts(products);
+            setAllCustomers(customers.slice().sort((a, b) => a.name.localeCompare(b.name)));
+            setAllProducts(products.slice().sort((a, b) => a.name.localeCompare(b.name)));
 
             // Compute planned next number without reserving it
             let maxNum = 0;
@@ -123,15 +130,19 @@ export default function NewInvoicePage() {
 
     const filteredCustomers = useMemo(() => {
         const q = customerName.trim().toLowerCase();
-        if (!q) return allCustomers.slice(0, 8);
-        return allCustomers.filter(c => c.name.toLowerCase().includes(q)).slice(0, 8);
+        const arr = !q ? allCustomers.slice(0, 8) : allCustomers.filter(c => c.name.toLowerCase().includes(q)).slice(0, 8);
+        return arr;
     }, [allCustomers, customerName]);
 
     useEffect(() => {
         if (matchedCustomer) {
             setCustomerAddress(matchedCustomer.address || '');
             setCustomerCity(matchedCustomer.city || '');
+            if (typeof matchedCustomer.hourlyRate === 'number') {
+                setHourlyRate(String(matchedCustomer.hourlyRate));
+            }
         }
+        setIsEditingClient(false);
     }, [matchedCustomer]);
 
     const addItemRow = () => {
@@ -147,20 +158,46 @@ export default function NewInvoicePage() {
     };
 
     const onPickProductByName = (index: number, name: string) => {
-        updateItem(index, { name });
         const product = allProducts.find(p => p.name.toLowerCase() === name.toLowerCase());
+        const patch: Partial<ItemForm> = { name };
         if (product) {
-            updateItem(index, {
-                price: Number(product.price) || 0,
-                description: product.description || '',
-            });
+            patch.price = Number(product.price) || 0;
+            patch.description = product.description || '';
         }
+        updateItem(index, patch);
     };
 
     const filteredProducts = (query: string) => {
         const q = query.trim().toLowerCase();
-        if (!q) return allProducts.slice(0, 8);
-        return allProducts.filter(p => p.name.toLowerCase().includes(q)).slice(0, 8);
+        const arr = !q ? allProducts.slice(0, 8) : allProducts.filter(p => p.name.toLowerCase().includes(q)).slice(0, 8);
+        return arr;
+    };
+
+    const handleUpdateCustomer = async () => {
+        if (!matchedCustomer) return;
+        setIsBusy(true);
+        try {
+            const customerToSave: CustomerData = {
+                ...matchedCustomer,
+                name: customerName.trim(),
+                address: customerAddress,
+                city: customerCity,
+                hourlyRate: hourlyRate ? Number(hourlyRate) : undefined,
+                lastModified: new Date().toISOString(),
+            };
+            const saved = await saveCustomer(customerToSave);
+            setAllCustomers(prev => {
+                const next = prev.map(c => c.id === saved.id ? (saved as unknown as CustomerData) : c);
+                return next.slice().sort((a, b) => a.name.localeCompare(b.name));
+            });
+            showSuccess(`Customer "${saved.name}" updated successfully!`);
+            setIsEditingClient(false);
+        } catch (error) {
+            console.error('Failed to update customer:', error);
+            showError('Failed to update customer. Please try again.');
+        } finally {
+            setIsBusy(false);
+        }
     };
 
     const rememberCustomer = async () => {
@@ -175,6 +212,7 @@ export default function NewInvoicePage() {
                 name: customerName.trim(),
                 address: customerAddress,
                 city: customerCity,
+                hourlyRate: hourlyRate ? Number(hourlyRate) : undefined,
                 lastModified: now,
             } as CustomerData);
             setAllCustomers(prev => [...prev, saved as unknown as CustomerData]);
@@ -286,6 +324,49 @@ export default function NewInvoicePage() {
         }
     };
 
+    const insertThisMonthHours = async () => {
+        if (!matchedCustomer) return;
+        const rate = Number(hourlyRate || '0');
+        if (!rate || Number.isNaN(rate)) {
+            showError('Please enter an hourly rate first.');
+            return;
+        }
+        try {
+            const date = new Date(invoiceDate || new Date());
+            const year = date.getFullYear();
+            const month = date.getMonth() + 1;
+            const ts = await loadTimeMonth(matchedCustomer.id, matchedCustomer.name, year, month);
+            const totalMinutes = ts.entries.reduce((sum, e) => sum + (e.durationMinutes || 0), 0);
+            const hours = Math.round((totalMinutes / 60) * 100) / 100; // 2 decimals
+            if (hours <= 0) {
+                showError('No hours found for the selected month.');
+                return;
+            }
+            const label = `Hours ${date.toLocaleString(undefined, { month: 'long', year: 'numeric' })}`;
+            // Upsert or append
+            setItems(prev => {
+                const row = { name: label, quantity: hours, price: rate, description: `Time tracking for ${matchedCustomer.name}` } as ItemForm;
+                
+                // If there's only one item and it's empty, replace it
+                if (prev.length === 1 && !prev[0].name.trim()) {
+                    return [row];
+                }
+
+                const idx = prev.findIndex(i => i.name === label);
+                if (idx >= 0) {
+                    const next = prev.slice();
+                    next[idx] = row;
+                    return next;
+                }
+                return [...prev, row];
+            });
+            showSuccess('Inserted this month\'s hours.');
+        } catch (e) {
+            console.error('Failed to load timesheet', e);
+            showError('Failed to insert hours from timesheet.');
+        }
+    };
+
     useEffect(() => {
         return () => {
             if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -327,67 +408,92 @@ export default function NewInvoicePage() {
                                 {/* Left column: Customer + Items */}
                                 <div className="md:col-span-8 space-y-6">
                                     <div className="space-y-4">
-                                        <h3 className="text-lg font-semibold text-neutral-900">Customer</h3>
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-lg font-semibold text-neutral-900">Customer</h3>
+                                            {matchedCustomer && (
+                                                isEditingClient ? (
+                                                    <Button variant="outline" size="sm" onClick={handleUpdateCustomer} disabled={isBusy}>
+                                                        <Save className="h-4 w-4 mr-2" />
+                                                        Save changes
+                                                    </Button>
+                                                ) : (
+                                                    <Button variant="outline" size="sm" onClick={() => setIsEditingClient(true)}>
+                                                        <Pencil className="h-4 w-4 mr-2" />
+                                                        Edit
+                                                    </Button>
+                                                )
+                                            )}
+                                        </div>
                                     <div className="space-y-3">
                                                 <div className="relative">
-                                                <label className="block text-sm font-medium text-neutral-700 mb-2">Customer name</label>
-                                                    <Input
-                                                    ref={customerInputRef}
-                                                    placeholder="Enter customer name..."
-                                                        value={customerName}
-                                                        onFocus={() => setShowCustomerSuggestions(true)}
-                                                    onBlur={() => {
-                                                        // Use a longer delay to prevent premature closing
-                                                        setTimeout(() => setShowCustomerSuggestions(false), 300);
-                                                    }}
-                                                        onChange={e => {
-                                                            setCustomerName(e.target.value);
-                                                            setShowCustomerSuggestions(true);
-                                                        }}
-                                                    className="w-full"
-                                                    />
-                                                    {showCustomerSuggestions && filteredCustomers.length > 0 && customerName.trim() && (
-                                                    <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-lg border border-neutral-200 bg-white shadow-lg max-h-48 overflow-auto">
-                                                            {filteredCustomers.map(c => (
-                                                                <div
-                                                                    key={c.id}
-                                                                className="px-4 py-3 text-sm hover:bg-neutral-50 cursor-pointer border-b border-neutral-100 last:border-b-0"
-                                                                    onMouseDown={e => e.preventDefault()}
-                                                                    onClick={() => {
-                                                                        setCustomerName(c.name);
-                                                                        setCustomerAddress(c.address || '');
-                                                                        setCustomerCity(c.city || '');
-                                                                        setShowCustomerSuggestions(false);
-                                                                    customerInputRef.current?.blur();
-                                                                }}
-                                                            >
-                                                                <div className="font-medium">{c.name}</div>
-                                                                {(c.address || c.city) && (
-                                                                    <div className="text-xs text-neutral-500 mt-1">
-                                                                        {c.address} {c.city}
-                                                                    </div>
-                                                                )}
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
+                                                <label className="block text-sm font-medium text-neutral-700 mb-2">Customer</label>
+                                                <Popover open={showCustomerSuggestions} onOpenChange={setShowCustomerSuggestions}>
+                                                    <PopoverTrigger asChild>
+                                                        <Input
+                                                            ref={customerInputRef}
+                                                            placeholder="Search or type customer..."
+                                                            value={customerName}
+                                                            onChange={e => {
+                                                                setCustomerName(e.target.value);
+                                                                setShowCustomerSuggestions(true);
+                                                            }}
+                                                            onFocus={() => setShowCustomerSuggestions(true)}
+                                                            className="w-full"
+                                                        />
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="p-0" align="start">
+                                                        <Command>
+                                                            <CommandInput placeholder="Search customers..." value={customerName} onValueChange={v => setCustomerName(v)} />
+                                                            <CommandList>
+                                                                <CommandEmpty>No results.</CommandEmpty>
+                                                                <CommandGroup>
+                                                                    {filteredCustomers.map(c => (
+                                                                        <CommandItem
+                                                                            key={c.id}
+                                                                            value={c.name}
+                                                                            onSelect={() => {
+                                                                                setCustomerName(c.name);
+                                                                                setCustomerAddress(c.address || '');
+                                                                                setCustomerCity(c.city || '');
+                                                                                if (typeof (c as any).hourlyRate === 'number') setHourlyRate(String((c as any).hourlyRate));
+                                                                                setShowCustomerSuggestions(false);
+                                                                                customerInputRef.current?.blur();
+                                                                            }}
+                                                                        >
+                                                                            <div>
+                                                                                <div className="font-medium">{c.name}</div>
+                                                                                {(c.address || c.city) && (
+                                                                                    <div className="text-xs text-neutral-500 mt-1">{c.address} {c.city}</div>
+                                                                                )}
+                                                                            </div>
+                                                                        </CommandItem>
+                                                                    ))}
+                                                                </CommandGroup>
+                                                            </CommandList>
+                                                        </Command>
+                                                    </PopoverContent>
+                                                </Popover>
                                                 </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             <div>
                                                     <label className="block text-sm font-medium text-neutral-700 mb-2">Address</label>
-                                                <Input placeholder="Street and number" value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} />
+                                                <Input placeholder="Street and number" value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} disabled={!!matchedCustomer && !isEditingClient} />
                                             </div>
                                             <div>
                                                     <label className="block text-sm font-medium text-neutral-700 mb-2">City/ZIP</label>
-                                                <Input placeholder="City, ZIP" value={customerCity} onChange={e => setCustomerCity(e.target.value)} />
+                                                <Input placeholder="City, ZIP" value={customerCity} onChange={e => setCustomerCity(e.target.value)} disabled={!!matchedCustomer && !isEditingClient} />
                                                 </div>
                                             </div>
                                             {companyInfo.is_vat_enabled && (
                                                 <div>
                                                     <label className="block text-sm font-medium text-neutral-700 mb-2">Customer VAT ID (optional)</label>
-                                                    <Input placeholder="e.g., DE123456789" value={clientVatId} onChange={e => setClientVatId(e.target.value)} className="max-w-sm" />
+                                                    <Input placeholder="e.g., DE123456789" value={clientVatId} onChange={e => setClientVatId(e.target.value)} className="max-w-sm" disabled={!!matchedCustomer && !isEditingClient} />
                                                 </div>
                                             )}
+                                            <div>
+                                                <label className="block text-sm font-medium text-neutral-700 mb-2">Hourly rate (€)</label>
+                                                <Input type="number" step="0.01" min="0" placeholder="e.g., 80" value={hourlyRate} onChange={e => setHourlyRate(e.target.value)} className="max-w-xs" disabled={!!matchedCustomer && !isEditingClient} />
+                                            </div>
                                             {customerName.trim() && !matchedCustomer && (
                                                 <div className="flex justify-start">
                                                     <Button 
@@ -406,11 +512,16 @@ export default function NewInvoicePage() {
                                     </div>
 
                                     <div className="space-y-4">
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-center justify-between gap-2 flex-wrap">
                                             <h3 className="text-lg font-semibold text-neutral-900">Items</h3>
-                                            <Button type="button" variant="outline" onClick={addItemRow}>
-                                                + Add item
-                                            </Button>
+                                            <div className="flex items-center gap-2">
+                                                <Button type="button" variant="outline" onClick={addItemRow}>
+                                                    + Add item
+                                                </Button>
+                                                <Button type="button" variant="secondary" onClick={insertThisMonthHours} disabled={!matchedCustomer}>
+                                                    Insert this month hours
+                                                </Button>
+                                            </div>
                                         </div>
                                         <div className="space-y-4">
                                             {items.map((it, idx) => (
@@ -419,48 +530,50 @@ export default function NewInvoicePage() {
                                                         <div className="md:col-span-2">
                                                             <label className="block text-sm font-medium text-neutral-700 mb-2">Product/Service</label>
                                                         <div className="relative">
-                                                            <Input
-                                                                    ref={el => {
-                                                                        productInputRefs.current[idx] = el;
-                                                                    }}
-                                                                    placeholder="Enter product or service name..."
-                                                                value={it.name}
-                                                                onFocus={() => setOpenProductSuggestIndex(idx)}
-                                                                    onBlur={() => {
-                                                                        setTimeout(() => setOpenProductSuggestIndex(prev => (prev === idx ? null : prev)), 300);
-                                                                    }}
-                                                                onChange={e => {
-                                                                    onPickProductByName(idx, e.target.value);
-                                                                    setOpenProductSuggestIndex(idx);
-                                                                }}
-                                                                    className="w-full"
-                                                            />
-                                                                {openProductSuggestIndex === idx && filteredProducts(it.name).length > 0 && it.name.trim() && (
-                                                                    <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-lg border border-neutral-200 bg-white shadow-lg max-h-48 overflow-auto">
-                                                                    {filteredProducts(it.name).map(p => (
-                                                                        <div
-                                                                            key={p.id}
-                                                                                className="px-4 py-3 text-sm hover:bg-neutral-50 cursor-pointer border-b border-neutral-100 last:border-b-0"
-                                                                            onMouseDown={e => e.preventDefault()}
-                                                                            onClick={() => {
-                                                                                updateItem(idx, {
-                                                                                    name: p.name,
-                                                                                    price: Number(p.price) || 0,
-                                                                                    description: p.description || '',
-                                                                                });
-                                                                                setOpenProductSuggestIndex(null);
-                                                                                    productInputRefs.current[idx]?.blur();
-                                                                                }}
-                                                                            >
-                                                                                <div className="font-medium">{p.name}</div>
-                                                                                {p.description && (
-                                                                                    <div className="text-xs text-neutral-500 mt-1">{p.description}</div>
-                                                                                )}
-                                                                                <div className="text-xs text-neutral-600 mt-1">€{Number(p.price).toFixed(2)}</div>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            )}
+                                                            <Popover open={openProductSuggestIndex === idx} onOpenChange={(o) => setOpenProductSuggestIndex(o ? idx : null)}>
+                                                                <PopoverTrigger asChild>
+                                                                    <Input
+                                                                        ref={el => { productInputRefs.current[idx] = el; }}
+                                                                        placeholder="Search or type product..."
+                                                                        value={it.name}
+                                                                        onChange={e => {
+                                                                            onPickProductByName(idx, e.target.value);
+                                                                            setOpenProductSuggestIndex(idx);
+                                                                        }}
+                                                                        onFocus={() => setOpenProductSuggestIndex(idx)}
+                                                                        className="w-full"
+                                                                    />
+                                                                </PopoverTrigger>
+                                                                <PopoverContent className="p-0" align="start">
+                                                                    <Command>
+                                                                        <CommandInput placeholder="Search products..." value={it.name} onValueChange={v => onPickProductByName(idx, v)} />
+                                                                        <CommandList>
+                                                                            <CommandEmpty>No results.</CommandEmpty>
+                                                                            <CommandGroup>
+                                                                                {filteredProducts(it.name).map(p => (
+                                                                                    <CommandItem
+                                                                                        key={p.id}
+                                                                                        value={p.name}
+                                                                                        onSelect={() => {
+                                                                                            updateItem(idx, { name: p.name, price: Number(p.price) || 0, description: p.description || '' });
+                                                                                            setOpenProductSuggestIndex(null);
+                                                                                            productInputRefs.current[idx]?.blur();
+                                                                                        }}
+                                                                                    >
+                                                                                        <div>
+                                                                                            <div className="font-medium">{p.name}</div>
+                                                                                            {p.description && (
+                                                                                                <div className="text-xs text-neutral-500 mt-1">{p.description}</div>
+                                                                                            )}
+                                                                                            <div className="text-xs text-neutral-600 mt-1">€{Number(p.price).toFixed(2)}</div>
+                                                                                        </div>
+                                                                                    </CommandItem>
+                                                                                ))}
+                                                                            </CommandGroup>
+                                                                        </CommandList>
+                                                                    </Command>
+                                                                </PopoverContent>
+                                                            </Popover>
                                                         </div>
                                                     </div>
                                                     </div>
