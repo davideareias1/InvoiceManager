@@ -24,6 +24,7 @@ export interface CustomerData {
     address: string;
     city: string;
     number?: string;
+    hourlyRate?: number; // EUR per hour for time tracking
     lastModified: string;
     isDeleted?: boolean;
 }
@@ -142,6 +143,42 @@ export interface InvoiceRepository {
     searchInvoices(query: string): Invoice[];
     generateNextInvoiceNumber(): Promise<string>;
 } 
+
+// ==== Time tracking domain models ====
+
+export interface TimeEntry {
+    id: string; // stable id for UI editing
+    date: string; // ISO date: yyyy-MM-dd
+    start?: string; // HH:mm
+    pauseMinutes?: number; // integer minutes
+    end?: string; // HH:mm
+    durationMinutes: number; // computed and persisted for convenience
+    notes?: string;
+}
+
+export interface TimeSheetMonth {
+    customerId: string;
+    customerName: string;
+    year: number;
+    month: number; // 1-12
+    entries: TimeEntry[];
+    lastModified: string;
+}
+
+export interface TimeStats {
+    totalMinutesThisMonth: number;
+    averageMonthlyMinutesThisYear: number;
+    totalRevenueThisMonth?: number; // optional, derived with hourlyRate
+}
+
+export interface TimeTrackingRepository {
+    setDirectoryHandle(handle: FileSystemDirectoryHandle): void;
+    loadMonth(customerId: string, customerName: string, year: number, month: number): Promise<TimeSheetMonth>;
+    saveMonth(timesheet: TimeSheetMonth): Promise<TimeSheetMonth>;
+    upsertEntry(customerId: string, customerName: string, year: number, month: number, entry: TimeEntry): Promise<TimeSheetMonth>;
+    deleteEntry(customerId: string, customerName: string, year: number, month: number, dateISO: string): Promise<TimeSheetMonth>;
+    listAvailableMonths(customerId: string, customerName: string): Promise<Array<{ year: number; month: number }>>;
+}
 
 // Personal tax settings for German income tax, church tax, solidarity surcharge
 export interface PersonalTaxSettings {

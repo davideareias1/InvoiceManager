@@ -8,6 +8,7 @@ const navigationItems = [
     { href: '/', label: 'Home' },
     { href: '/invoices', label: 'Invoices' },
     { href: '/invoices/new', label: 'Create Invoice' },
+    { href: '/time', label: 'Time' },
     { href: '/statistics', label: 'Statistics' },
     { href: '/settings', label: 'Settings' },
 ];

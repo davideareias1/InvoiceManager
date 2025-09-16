@@ -14,6 +14,7 @@ import { Invoice } from '../../domain/models';
 import { setDirectoryHandle as setCustomerDirectoryHandle } from '../repositories/customerRepository';
 import { setDirectoryHandle as setProductDirectoryHandle } from '../repositories/productRepository';
 import { setDirectoryHandle as setInvoiceDirectoryHandle, loadInvoices as loadInvoicesFromUtils, deleteInvoice as deleteInvoiceFromUtils, saveInvoice as saveInvoiceToUtils } from '../repositories/invoiceRepository';
+import { setDirectoryHandle as setTimeTrackingDirectoryHandle } from '../repositories/timeTrackingRepository';
 
 interface FileSystemContextType {
     isSupported: boolean;
@@ -81,6 +82,7 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
                 setCustomerDirectoryHandle(currentHandle);
                 setProductDirectoryHandle(currentHandle);
                 setInvoiceDirectoryHandle(currentHandle);
+                setTimeTrackingDirectoryHandle(currentHandle);
             }
         } catch (error) {
             console.error("Error sharing directory handle:", error);
