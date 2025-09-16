@@ -122,6 +122,7 @@ export interface CustomerRepository {
     saveCustomer(customer: CustomerData): Promise<CustomerData>;
     deleteCustomer(customerId: string): Promise<boolean>;
     searchCustomers(query: string): CustomerData[];
+    findCustomerByIdSync(id: string): CustomerData | undefined;
 }
 
 export interface ProductRepository {

@@ -59,12 +59,12 @@ export interface KleinunternehmerMonitor {
 }
 
 export interface IncomeTaxEstimate {
-    taxableBaseYTD: number; // approx. business income YTD after simple deductions
-    incomeTax: number;
-    churchTax: number;
-    solidaritySurcharge: number;
-    prepaymentsYearToDate: number;
-    totalDueYTD: number; // incomeTax + churchTax + solidarity - prepayments
+    taxableBaseYTD: number; // projected annual taxable income (was YTD, now represents full year projection)
+    incomeTax: number; // projected annual income tax
+    churchTax: number; // projected annual church tax
+    solidaritySurcharge: number; // projected annual solidarity surcharge
+    prepaymentsYearToDate: number; // actual prepayments made YTD
+    totalDueYTD: number; // projected annual taxes - actual prepayments YTD
 }
 
 // ===== INTERNAL HELPERS =====
@@ -376,24 +376,18 @@ export function estimateIncomeTaxes(
     // Compute annual income tax using an approximate German 2025 tariff
     const incomeTaxAnnual = germanIncomeTax2025(taxableAnnual, !!tax.jointAssessment);
 
-    // Scale annual tax to YTD by proportion of YTD taxable base to annual taxable base
-    const deductibleYTD = Math.min(annualDeductible, (annualDeductible * doy) / 365);
-    const taxableBaseYTD = Math.max(0, revenueYTD - deductibleYTD);
-    const scale = taxableAnnual > 0 ? Math.min(1, taxableBaseYTD / taxableAnnual) : 0;
-    const incomeTaxYTD = incomeTaxAnnual * scale;
-
+    // Calculate taxes based on PROJECTED annual amounts, not scaled to YTD
     const churchRate = Math.max(0, tax.churchTaxRatePercent || 0) / 100;
-    const churchTax = incomeTaxYTD * churchRate;
+    const churchTax = incomeTaxAnnual * churchRate;
 
-    const soliAnnual = solidaritySurchargeAnnual(incomeTaxAnnual);
-    const solidaritySurcharge = soliAnnual * scale;
+    const solidaritySurcharge = solidaritySurchargeAnnual(incomeTaxAnnual);
 
     const prepayments = Math.max(0, tax.prepaymentsYearToDate || 0);
-    const totalDue = incomeTaxYTD + churchTax + solidaritySurcharge - prepayments;
+    const totalDue = incomeTaxAnnual + churchTax + solidaritySurcharge - prepayments;
 
     return {
-        taxableBaseYTD,
-        incomeTax: incomeTaxYTD,
+        taxableBaseYTD: taxableAnnual, // Now represents projected annual taxable base
+        incomeTax: incomeTaxAnnual,
         churchTax,
         solidaritySurcharge,
         prepaymentsYearToDate: prepayments,

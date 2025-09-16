@@ -54,6 +54,15 @@ export const loadCustomersSync = (): SavedCustomer[] => {
 };
 
 /**
+ * Find a customer by their ID from cache
+ * @param id Customer ID
+ * @returns The customer if found, otherwise undefined
+ */
+export const findCustomerByIdSync = (id: string): SavedCustomer | undefined => {
+    return cachedCustomers.find(c => c.id === id);
+};
+
+/**
  * Save a new customer or update an existing one
  * @param customer Customer data to save
  * @returns The saved customer with ID
@@ -165,4 +174,5 @@ export const customerRepositoryAdapter: CustomerRepository = {
     saveCustomer: async (c: CustomerData) => (await saveCustomer(c)) as unknown as CustomerData,
     deleteCustomer,
     searchCustomers: (q: string) => searchCustomers(q) as unknown as CustomerData[],
+    findCustomerByIdSync: (id: string) => findCustomerByIdSync(id) as unknown as CustomerData | undefined,
 };

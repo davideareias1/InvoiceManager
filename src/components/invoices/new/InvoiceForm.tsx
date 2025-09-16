@@ -1,10 +1,13 @@
 // ===== IMPORTS =====
-import React, { useReducer } from 'react';
-import { CustomerForm } from './CustomerForm';
+import React from 'react';
 import { InvoiceItems } from './InvoiceItems';
 import { InvoiceSidebar } from './InvoiceSidebar';
 import type { InvoiceFormState, InvoiceFormAction, Totals } from './types';
 import type { CustomerData, ProductData } from '@/domain/models';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Check, ChevronsUpDown } from 'lucide-react';
 
 // ===== PROPS =====
 
@@ -13,19 +16,10 @@ interface InvoiceFormProps {
     allProducts: ProductData[];
     plannedNumber: string;
     taxRate: number;
-    isVatEnabled: boolean;
     isBusy: boolean;
-    initialState: InvoiceFormState;
     totals: Totals;
     isValid: boolean;
-    matchedCustomer: CustomerData | null;
-    isEditingClient: boolean;
-    setIsEditingClient: (isEditing: boolean) => void;
-    
-    onUpdateCustomer: () => Promise<void>;
-    onRememberCustomer: () => Promise<void>;
-    onRememberProduct: (index: number) => Promise<void>;
-    onInsertThisMonthHours: () => Promise<void>;
+    onApplyMonthlyHoursToItem: (index: number) => Promise<void>;
     onPreview: () => void;
     
     dispatch: React.Dispatch<InvoiceFormAction>;
@@ -39,47 +33,105 @@ export function InvoiceForm({
     allProducts,
     plannedNumber,
     taxRate,
-    isVatEnabled,
     isBusy,
     totals,
     isValid,
-    matchedCustomer,
-    isEditingClient,
-    setIsEditingClient,
-    onUpdateCustomer,
-    onRememberCustomer,
-    onRememberProduct,
-    onInsertThisMonthHours,
+    onApplyMonthlyHoursToItem,
     onPreview,
     dispatch,
     formState,
 }: InvoiceFormProps) {
+
+    const [customerOpen, setCustomerOpen] = React.useState(false);
+    const selectedCustomerName = formState.customerName;
+
+    const onSelectCustomer = (value: string) => {
+        const customer = allCustomers.find(c => c.name === value);
+        if (customer) {
+            dispatch({
+                type: 'SET_ALL_FIELDS',
+                payload: {
+                    customerName: customer.name,
+                    customerAddress: customer.address || '',
+                    customerCity: customer.city || '',
+                    hourlyRate: typeof (customer as any).hourlyRate === 'number' ? String((customer as any).hourlyRate) : '',
+                }
+            });
+            setCustomerOpen(false);
+        } else {
+            dispatch({ type: 'SET_FIELD', field: 'customerName', value: value });
+        }
+    };
 
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
                 {/* Left column: Customer + Items */}
                 <div className="md:col-span-8 space-y-6">
-                    <CustomerForm
-                        formState={formState}
-                        dispatch={dispatch}
-                        allCustomers={allCustomers}
-                        matchedCustomer={matchedCustomer}
-                        isEditingClient={isEditingClient}
-                        setIsEditingClient={setIsEditingClient}
-                        onUpdateCustomer={onUpdateCustomer}
-                        onRememberCustomer={onRememberCustomer}
-                        isVatEnabled={isVatEnabled}
-                        isBusy={isBusy}
-                    />
+                    <div className="space-y-4">
+                        <div>
+                            <h3 className="text-lg font-semibold text-neutral-900">Customer</h3>
+                        </div>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-sm font-medium text-neutral-700 mb-2">Customer</label>
+                                <Popover open={customerOpen} onOpenChange={setCustomerOpen}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={customerOpen}
+                                            className="w-full justify-between"
+                                        >
+                                            <span className="truncate pr-2">
+                                                {selectedCustomerName ? selectedCustomerName : 'Select customer...'}
+                                            </span>
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent align="start" sideOffset={4} className="w-[420px] max-w-[90vw] p-0">
+                                        <Command>
+                                            <CommandInput placeholder="Search customers..." />
+                                            <CommandEmpty>No customer found.</CommandEmpty>
+                                            <CommandList className="max-h-72 overflow-auto">
+                                                <CommandGroup>
+                                                    {allCustomers.map((customer) => (
+                                                        <CommandItem
+                                                            key={customer.id}
+                                                            value={customer.name}
+                                                            onSelect={onSelectCustomer}
+                                                            className="py-2"
+                                                        >
+                                                            <div className="flex items-start gap-2 w-full">
+                                                                <Check
+                                                                    className={
+                                                                        'mt-0.5 h-4 w-4 ' + (customer.name === selectedCustomerName ? 'opacity-100' : 'opacity-0')
+                                                                    }
+                                                                />
+                                                                <div className="flex flex-col text-left">
+                                                                    <div className="font-medium leading-5">{customer.name}</div>
+                                                                    {(customer.address || customer.city) && (
+                                                                        <div className="text-xs text-neutral-500 leading-4">
+                                                                            {customer.address} {customer.city}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+                        </div>
+                    </div>
                     <InvoiceItems
                         formState={formState}
                         dispatch={dispatch}
                         allProducts={allProducts}
-                        onRememberProduct={onRememberProduct}
-                        onInsertThisMonthHours={onInsertThisMonthHours}
-                        canInsertHours={!!matchedCustomer}
-                        isBusy={isBusy}
+                        onApplyMonthlyHoursToItem={onApplyMonthlyHoursToItem}
                     />
                 </div>
 

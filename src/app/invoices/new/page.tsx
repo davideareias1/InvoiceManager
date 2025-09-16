@@ -5,13 +5,10 @@ import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { useFileSystem } from '@/infrastructure/contexts/FileSystemContext';
 import { getSavedDirectoryHandle, setDirectoryHandle as setFsHandle } from '@/infrastructure/filesystem/fileSystemStorage';
-import { setDirectoryHandle as setCustomerHandle, loadCustomers, searchCustomers, saveCustomer } from '@/infrastructure/repositories/customerRepository';
-import { setDirectoryHandle as setProductHandle, loadProducts, searchProducts, saveProduct } from '@/infrastructure/repositories/productRepository';
+import { setDirectoryHandle as setCustomerHandle, loadCustomers } from '@/infrastructure/repositories/customerRepository';
+import { setDirectoryHandle as setProductHandle, loadProducts } from '@/infrastructure/repositories/productRepository';
 import { setDirectoryHandle as setInvoiceHandle, invoiceRepositoryAdapter } from '@/infrastructure/repositories/invoiceRepository';
 import { setDirectoryHandle as setTimeHandle, loadMonth as loadTimeMonth } from '@/infrastructure/repositories/timeTrackingRepository';
 import { CreateInvoice } from '@/application/usecases';
@@ -21,7 +18,6 @@ import { addDays, format } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import type { CompanyInfo, CustomerData, Invoice, InvoiceItem, ProductData } from '@/domain/models';
 import { showSuccess, showError } from '@/shared/notifications';
-import { Pencil, Save } from 'lucide-react';
 import { InvoiceForm } from '@/components/invoices/new/InvoiceForm';
 import type { InvoiceFormState, InvoiceFormAction, ItemForm } from '@/components/invoices/new/types';
 const PdfViewer = dynamic(() => import('@/components/PdfViewer').then(m => m.PdfViewer), { ssr: false });
@@ -48,6 +44,8 @@ function formReducer(state: InvoiceFormState, action: InvoiceFormAction): Invoic
             return { ...state, ...action.payload };
         case 'ADD_ITEM':
             return { ...state, items: [...state.items, { name: '', quantity: 1, price: 0, description: '' }] };
+        case 'ADD_ITEM_WITH_PAYLOAD':
+            return { ...state, items: [...state.items, action.payload] };
         case 'REMOVE_ITEM':
             if (state.items.length === 1) return state;
             return { ...state, items: state.items.filter((_, i) => i !== action.index) };
@@ -68,7 +66,6 @@ export default function NewInvoicePage() {
 
     const [step, setStep] = useState<Step>('edit');
     const [isBusy, setIsBusy] = useState(false);
-    const [isEditingClient, setIsEditingClient] = useState(false);
     const [allCustomers, setAllCustomers] = useState<CustomerData[]>([]);
     const [allProducts, setAllProducts] = useState<ProductData[]>([]);
     const [plannedNumber, setPlannedNumber] = useState<string>('—');
@@ -89,6 +86,13 @@ export default function NewInvoicePage() {
         const total = subtotal + taxAmount;
         return { subtotal, taxAmount, total };
     }, [formState.items, taxRate]);
+
+    const isValid = useMemo(() => {
+        if (!formState.customerName.trim()) return false;
+        if (formState.items.length === 0) return false;
+        if (formState.items.some(it => !it.name.trim() || !(Number(it.quantity) > 0) || !(Number(it.price) >= 0))) return false;
+        return true;
+    }, [formState]);
 
     useEffect(() => {
         const setup = async () => {
@@ -155,7 +159,6 @@ export default function NewInvoicePage() {
                 dispatch({ type: 'SET_FIELD', field: 'hourlyRate', value: String(matchedCustomer.hourlyRate) });
             }
         }
-        setIsEditingClient(false);
     }, [matchedCustomer]);
 
     const addItemRow = () => {
@@ -170,15 +173,7 @@ export default function NewInvoicePage() {
         dispatch({ type: 'UPDATE_ITEM', index, payload: patch });
     };
 
-    const onPickProductByName = (index: number, name: string) => {
-        const product = allProducts.find(p => p.name.toLowerCase() === name.toLowerCase());
-        const patch: Partial<ItemForm> = { name };
-        if (product) {
-            patch.price = Number(product.price) || 0;
-            patch.description = product.description || '';
-        }
-        updateItem(index, patch);
-    };
+    // Removed free-text product picking; products are selected from a list in the items section
 
     const filteredProducts = (query: string) => {
         const q = query.trim().toLowerCase();
@@ -186,79 +181,7 @@ export default function NewInvoicePage() {
         return arr;
     };
 
-    const handleUpdateCustomer = async () => {
-        if (!matchedCustomer) return;
-        setIsBusy(true);
-        try {
-            const customerToSave: CustomerData = {
-                ...matchedCustomer,
-                name: formState.customerName.trim(),
-                address: formState.customerAddress,
-                city: formState.customerCity,
-                hourlyRate: formState.hourlyRate ? Number(formState.hourlyRate) : undefined,
-                lastModified: new Date().toISOString(),
-            };
-            const saved = await saveCustomer(customerToSave);
-            setAllCustomers(prev => {
-                const next = prev.map(c => c.id === saved.id ? (saved as unknown as CustomerData) : c);
-                return next.slice().sort((a, b) => a.name.localeCompare(b.name));
-            });
-            showSuccess(`Customer "${saved.name}" updated successfully!`);
-            setIsEditingClient(false);
-        } catch (error) {
-            console.error('Failed to update customer:', error);
-            showError('Failed to update customer. Please try again.');
-        } finally {
-            setIsBusy(false);
-        }
-    };
-
-    const rememberCustomer = async () => {
-        if (!formState.customerName.trim()) return;
-        setIsBusy(true);
-        try {
-            const existing = allCustomers.find(c => c.name.toLowerCase() === formState.customerName.trim().toLowerCase());
-            if (existing) return; // already known
-            const now = new Date().toISOString();
-            const saved = await saveCustomer({
-                id: uuidv4(),
-                name: formState.customerName.trim(),
-                address: formState.customerAddress,
-                city: formState.customerCity,
-                hourlyRate: formState.hourlyRate ? Number(formState.hourlyRate) : undefined,
-                lastModified: now,
-            } as CustomerData);
-            setAllCustomers(prev => [...prev, saved as unknown as CustomerData]);
-            showSuccess(`Customer "${formState.customerName}" saved successfully!`);
-        } catch (error) {
-            console.error('Failed to save customer:', error);
-            showError('Failed to save customer. Please try again.');
-        } finally {
-            setIsBusy(false);
-        }
-    };
-
-    const rememberProduct = async (index: number) => {
-        const it = formState.items[index];
-        if (!it || !it.name.trim()) return;
-        setIsBusy(true);
-        try {
-            const exists = allProducts.find(p => p.name.toLowerCase() === it.name.trim().toLowerCase());
-            if (exists) return;
-            const saved = await saveProduct({
-                name: it.name.trim(),
-                price: Number(it.price) || 0,
-                description: it.description || '',
-            });
-            setAllProducts(prev => [...prev, saved]);
-            showSuccess(`Product "${it.name}" saved successfully!`);
-        } catch (error) {
-            console.error('Failed to save product:', error);
-            showError('Failed to save product. Please try again.');
-        } finally {
-            setIsBusy(false);
-        }
-    };
+    // Removed save-new-customer and save-product flows to streamline UX
 
     const buildInvoice = (number?: string): Invoice => {
         const issuer = mapCompanyToIssuer(companyInfo);
@@ -337,46 +260,42 @@ export default function NewInvoicePage() {
         }
     };
 
-    const insertThisMonthHours = async () => {
-        if (!matchedCustomer) return;
-        const rate = Number(formState.hourlyRate || '0');
-        if (!rate || Number.isNaN(rate)) {
-            showError('Please enter an hourly rate first.');
-            return;
-        }
+    const applyMonthlyHoursToItem = async (index: number) => {
         try {
             const date = new Date(formState.invoiceDate || new Date());
             const year = date.getFullYear();
             const month = date.getMonth() + 1;
-            const ts = await loadTimeMonth(matchedCustomer.id, matchedCustomer.name, year, month);
-            const totalMinutes = ts.entries.reduce((sum, e) => sum + (e.durationMinutes || 0), 0);
-            const hours = Math.round((totalMinutes / 60) * 100) / 100; // 2 decimals
-            if (hours <= 0) {
-                showError('No hours found for the selected month.');
-                return;
-            }
+
             const label = `Hours ${date.toLocaleString(undefined, { month: 'long', year: 'numeric' })}`;
-            // Upsert or append
-            const row = { name: label, quantity: hours, price: rate, description: `Time tracking for ${matchedCustomer.name}` } as ItemForm;
-            
-            // If there's only one item and it's empty, replace it
-            if (formState.items.length === 1 && !formState.items[0].name.trim()) {
-                dispatch({ type: 'UPDATE_ITEM', index: 0, payload: row });
+
+            // If no customer selected, create labeled empty row
+            if (!matchedCustomer) {
+                dispatch({ type: 'UPDATE_ITEM', index, payload: { name: label, quantity: 0, price: 0, description: '' } });
                 return;
             }
 
-            const idx = formState.items.findIndex(i => i.name === label);
-            if (idx >= 0) {
-                dispatch({ type: 'UPDATE_ITEM', index: idx, payload: row });
-            } else {
-                dispatch({ type: 'ADD_ITEM' });
-                // This is a bit of a hack, but it works for now.
-                setTimeout(() => dispatch({ type: 'UPDATE_ITEM', index: formState.items.length, payload: row }), 0);
-            }
-            showSuccess('Inserted this month\'s hours.');
+            // Load tracked time for the selected customer and month
+            const ts = await loadTimeMonth(matchedCustomer.id, matchedCustomer.name, year, month);
+            const totalMinutes = ts.entries.reduce((sum, e) => sum + (e.durationMinutes || 0), 0);
+            const rawHours = Math.round((totalMinutes / 60) * 100) / 100; // 2 decimals
+            const hours = Math.round(rawHours / 0.5) * 0.5; // round to nearest 0.5
+
+            // Use rate if provided, otherwise set price to 0 but still show hours
+            const rate = Number(formState.hourlyRate || '0');
+            const price = Number.isFinite(rate) && rate > 0 ? rate : 0;
+
+            const row: Partial<ItemForm> = {
+                name: label,
+                quantity: hours > 0 ? hours : 0,
+                price,
+                description: `Softwareentwicklung – ${matchedCustomer.name} (Abrechnung nach Stunden)`,
+            };
+            dispatch({ type: 'UPDATE_ITEM', index, payload: row });
         } catch (e) {
-            console.error('Failed to load timesheet', e);
-            showError('Failed to insert hours from timesheet.');
+            console.error('Failed to apply monthly hours', e);
+            const date = new Date(formState.invoiceDate || new Date());
+            const label = `Hours ${date.toLocaleString(undefined, { month: 'long', year: 'numeric' })}`;
+            dispatch({ type: 'UPDATE_ITEM', index, payload: { name: label, quantity: 0, price: 0 } });
         }
     };
 
@@ -409,45 +328,41 @@ export default function NewInvoicePage() {
     }
 
     return (
-        <div className={`space-y-4 ${step === 'preview' ? 'p-3' : 'p-6'}`}>
-            <Card>
-                <CardHeader>
+        <div className={`${step === 'preview' ? 'p-3' : 'p-6'} h-full overflow-hidden`}>
+            <Card className="h-full flex flex-col">
+                <CardHeader className="shrink-0">
                     <CardTitle>New Invoice</CardTitle>
                 </CardHeader>
-                <CardContent className={step === 'preview' ? 'space-y-2' : 'space-y-4'}>
+                <CardContent className={(step === 'preview' ? 'space-y-2' : 'space-y-4') + ' flex-1 min-h-0 overflow-hidden'}>
                     {step === 'edit' && (
-                        <InvoiceForm
-                            allCustomers={allCustomers}
-                            allProducts={allProducts}
-                            plannedNumber={plannedNumber}
-                            taxRate={taxRate}
-                            isVatEnabled={companyInfo.is_vat_enabled}
-                            isBusy={isBusy}
-                            initialState={initialFormState}
-                            totals={computedTotals}
-                            isValid={isValid}
-                            matchedCustomer={matchedCustomer}
-                            isEditingClient={isEditingClient}
-                            setIsEditingClient={setIsEditingClient}
-                            onUpdateCustomer={handleUpdateCustomer}
-                            onRememberCustomer={rememberCustomer}
-                            onRememberProduct={rememberProduct}
-                            onInsertThisMonthHours={insertThisMonthHours}
-                            onPreview={goPreview}
-                            dispatch={dispatch}
-                            formState={formState}
-                        />
+                        <div className="h-full overflow-auto pr-1">
+                            <InvoiceForm
+                                allCustomers={allCustomers}
+                                allProducts={allProducts}
+                                plannedNumber={plannedNumber}
+                                taxRate={taxRate}
+                                isBusy={isBusy}
+                                totals={computedTotals}
+                                isValid={isValid}
+                                onApplyMonthlyHoursToItem={applyMonthlyHoursToItem}
+                                onPreview={goPreview}
+                                dispatch={dispatch}
+                                formState={formState}
+                            />
+                        </div>
                     )}
 
                     {step === 'preview' && (
-                        <div className="space-y-2">
-                            <div className="text-sm text-neutral-600">Preview of invoice #{plannedNumber} (final number assigned on save)</div>
-                            {previewUrl ? (
-                                <PdfViewer src={previewUrl} className="border border-neutral-200 rounded" />
-                            ) : (
-                                <div className="p-4">Generating preview…</div>
-                            )}
-                            <div className="flex justify-between">
+                        <div className="flex flex-col h-full min-h-0 gap-2">
+                            <div className="text-sm text-neutral-600 shrink-0">Preview of invoice #{plannedNumber} (final number assigned on save)</div>
+                            <div className="flex-1 min-h-0 overflow-auto">
+                                {previewUrl ? (
+                                    <PdfViewer src={previewUrl} className="border border-neutral-200 rounded w-full h-full" />
+                                ) : (
+                                    <div className="p-4">Generating preview…</div>
+                                )}
+                            </div>
+                            <div className="flex justify-between shrink-0">
                                 <Button variant="outline" onClick={() => setStep('edit')}>Back</Button>
                                 <Button onClick={save} disabled={isBusy}>Save</Button>
                             </div>

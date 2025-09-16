@@ -1,9 +1,10 @@
 // ===== IMPORTS =====
-import React, { useMemo, useRef, useState } from 'react';
+import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Check, ChevronsUpDown } from 'lucide-react';
 import type { InvoiceItemsProps } from './types';
 import type { ItemForm } from './types';
 
@@ -13,28 +14,27 @@ export function InvoiceItems({
     formState,
     dispatch,
     allProducts,
-    onRememberProduct,
-    onInsertThisMonthHours,
-    canInsertHours,
-    isBusy,
+    onApplyMonthlyHoursToItem,
 }: InvoiceItemsProps) {
-    const [openProductSuggestIndex, setOpenProductSuggestIndex] = useState<number | null>(null);
-    const productInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
-
-    const filteredProducts = (query: string) => {
-        const q = query.trim().toLowerCase();
-        if (!q) return allProducts.slice(0, 8);
-        return allProducts.filter(p => p.name.toLowerCase().includes(q)).slice(0, 8);
+    const roundToStep = (value: number, step: number) => {
+        if (!Number.isFinite(value)) return 0;
+        return Math.round(value / step) * step;
     };
-
-    const onPickProductByName = (index: number, name: string) => {
-        const product = allProducts.find(p => p.name.toLowerCase() === name.toLowerCase());
-        const patch: Partial<ItemForm> = { name };
+    const [openIndex, setOpenIndex] = React.useState<number | null>(null);
+    const onSelectProduct = (index: number, productName: string) => {
+        const product = allProducts.find(p => p.name === productName);
         if (product) {
-            patch.price = Number(product.price) || 0;
-            patch.description = product.description || '';
+            dispatch({
+                type: 'UPDATE_ITEM',
+                index,
+                payload: {
+                    name: product.name,
+                    price: Number(product.price) || 0,
+                    description: product.description || ''
+                }
+            });
+            setOpenIndex(null);
         }
-        dispatch({ type: 'UPDATE_ITEM', index, payload: patch });
     };
 
     return (
@@ -45,69 +45,77 @@ export function InvoiceItems({
                     <Button type="button" variant="outline" onClick={() => dispatch({ type: 'ADD_ITEM' })}>
                         + Add item
                     </Button>
-                    <Button type="button" variant="secondary" onClick={onInsertThisMonthHours} disabled={!canInsertHours}>
-                        Insert this month hours
-                    </Button>
                 </div>
             </div>
 
             <div className="space-y-4">
                 {formState.items.map((it, idx) => (
                     <div key={idx} className="p-4 border border-neutral-200 rounded-lg bg-neutral-50 space-y-3">
-                        {/* Product/Service Input */}
+                        {/* Product/Service Selection */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div className="md:col-span-2">
                                 <label className="block text-sm font-medium text-neutral-700 mb-2">Product/Service</label>
-                                <div className="relative">
-                                    <Popover open={openProductSuggestIndex === idx} onOpenChange={(o) => setOpenProductSuggestIndex(o ? idx : null)}>
-                                        <PopoverTrigger asChild>
-                                            <Input
-                                                ref={el => { productInputRefs.current[idx] = el; }}
-                                                placeholder="Search or type product..."
-                                                value={it.name}
-                                                onChange={e => {
-                                                    onPickProductByName(idx, e.target.value);
-                                                    setOpenProductSuggestIndex(idx);
-                                                }}
-                                                onFocus={() => setOpenProductSuggestIndex(idx)}
-                                                className="w-full"
-                                            />
-                                        </PopoverTrigger>
-                                        <PopoverContent className="p-0" align="start">
-                                            <Command>
-                                                <CommandInput 
-                                                    placeholder="Search products..." 
-                                                    value={it.name} 
-                                                    onValueChange={v => onPickProductByName(idx, v)} 
-                                                />
-                                                <CommandList>
-                                                    <CommandEmpty>No results.</CommandEmpty>
-                                                    <CommandGroup>
-                                                        {filteredProducts(it.name).map(p => (
-                                                            <CommandItem
-                                                                key={p.id}
-                                                                value={p.name}
-                                                                onSelect={() => {
-                                                                    dispatch({ type: 'UPDATE_ITEM', index: idx, payload: { name: p.name, price: Number(p.price) || 0, description: p.description || '' } });
-                                                                    setOpenProductSuggestIndex(null);
-                                                                    productInputRefs.current[idx]?.blur();
-                                                                }}
-                                                            >
-                                                                <div>
-                                                                    <div className="font-medium">{p.name}</div>
-                                                                    {p.description && (
-                                                                        <div className="text-xs text-neutral-500 mt-1">{p.description}</div>
+                                <Popover open={openIndex === idx} onOpenChange={(o) => setOpenIndex(o ? idx : null)}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={openIndex === idx}
+                                            className="w-full justify-between"
+                                        >
+                                            <span className="truncate pr-2">
+                                                {it.name ? it.name : 'Select product...'}
+                                            </span>
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent align="start" sideOffset={4} className="w-[520px] max-w-[95vw] p-0">
+                                        <Command>
+                                            <CommandInput placeholder="Search products..." />
+                                            <CommandEmpty>No product found.</CommandEmpty>
+                                            <CommandList className="max-h-72 overflow-auto">
+                                                <CommandGroup>
+                                                    <CommandItem
+                                                        key="__monthly_hours__"
+                                                        value="Monthly hours (x h)"
+                                                        onSelect={() => {
+                                                            setOpenIndex(null);
+                                                            onApplyMonthlyHoursToItem(idx);
+                                                        }}
+                                                        className="py-2"
+                                                    >
+                                                        <div className="flex items-start gap-2 w-full">
+                                                            <Check className={'mt-0.5 h-4 w-4 opacity-0'} />
+                                                            <div className="flex flex-col text-left">
+                                                                <div className="font-medium leading-5">Monthly hours (x h)</div>
+                                                                <div className="text-xs text-neutral-500 leading-4">Insert tracked hours for selected month</div>
+                                                            </div>
+                                                        </div>
+                                                    </CommandItem>
+                                                    {allProducts.map(product => (
+                                                        <CommandItem
+                                                            key={product.id}
+                                                            value={product.name}
+                                                            onSelect={(value) => onSelectProduct(idx, value)}
+                                                            className="py-2"
+                                                        >
+                                                            <div className="flex items-start gap-2 w-full">
+                                                                <Check className={'mt-0.5 h-4 w-4 ' + (product.name === it.name ? 'opacity-100' : 'opacity-0')} />
+                                                                <div className="flex flex-col text-left">
+                                                                    <div className="font-medium leading-5">{product.name}</div>
+                                                                    {product.description && (
+                                                                        <div className="text-xs text-neutral-500 leading-4">{product.description}</div>
                                                                     )}
-                                                                    <div className="text-xs text-neutral-600 mt-1">€{Number(p.price).toFixed(2)}</div>
+                                                                    <div className="text-xs text-neutral-600 leading-4">€{Number(product.price).toFixed(2)}</div>
                                                                 </div>
-                                                            </CommandItem>
-                                                        ))}
-                                                    </CommandGroup>
-                                                </CommandList>
-                                            </Command>
-                                        </PopoverContent>
-                                    </Popover>
-                                </div>
+                                                            </div>
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
                             </div>
                         </div>
 
@@ -115,7 +123,17 @@ export function InvoiceItems({
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                             <div>
                                 <label className="block text-sm font-medium text-neutral-700 mb-2">Quantity</label>
-                                <Input type="number" step="0.5" min="0" value={String(it.quantity)} onChange={e => dispatch({ type: 'UPDATE_ITEM', index: idx, payload: { quantity: Number(e.target.value) } })} />
+                                <Input
+                                    type="number"
+                                    step="0.5"
+                                    min="0"
+                                    value={String(it.quantity)}
+                                    onChange={e => {
+                                        const raw = Number(e.target.value);
+                                        const rounded = Math.max(0, roundToStep(raw, 0.5));
+                                        dispatch({ type: 'UPDATE_ITEM', index: idx, payload: { quantity: rounded } });
+                                    }}
+                                />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-neutral-700 mb-2">Unit price (€)</label>
@@ -133,18 +151,6 @@ export function InvoiceItems({
                                 Total: <span className="font-medium">€{(Number(it.quantity) * Number(it.price)).toFixed(2)}</span>
                             </div>
                             <div className="flex gap-2 items-center">
-                                {it.name.trim() && !allProducts.find(p => p.name.toLowerCase() === it.name.trim().toLowerCase()) && (
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        disabled={isBusy}
-                                        onClick={() => onRememberProduct(idx)}
-                                        className="text-xs"
-                                    >
-                                        💾 Save product
-                                    </Button>
-                                )}
                                 <Button
                                     type="button"
                                     size="sm"

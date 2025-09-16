@@ -1,19 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams, useParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import dynamic from 'next/dynamic';
-import { generateInvoicePDF } from '@/infrastructure/pdf/pdfUtils';
-import { useCompany } from '@/infrastructure/contexts/CompanyContext';
-import { v4 as uuidv4 } from 'uuid';
-import type { Invoice, InvoiceItem } from '@/domain/models';
+import type { CustomerData } from '@/domain/models';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TimeTrackingProvider, useTimeTracking } from '@/infrastructure/contexts/TimeTrackingContext';
 import { useFileSystem } from '@/infrastructure/contexts/FileSystemContext';
 import { format } from 'date-fns';
+import { getSavedDirectoryHandle } from '@/infrastructure/filesystem/fileSystemStorage';
+import { setDirectoryHandle, findCustomerByIdSync, loadCustomers } from '@/infrastructure/repositories/customerRepository';
 
 function MonthSelector({ value, onChange, options }: { value: { year: number; month: number }; onChange: (v: { year: number; month: number }) => void; options: Array<{ year: number; month: number }> }) {
     const current = `${value.year}-${String(value.month).padStart(2, '0')}`;
@@ -39,7 +37,6 @@ function MonthSelector({ value, onChange, options }: { value: { year: number; mo
     );
 }
 
-const PdfViewer = dynamic(() => import('@/components/PdfViewer').then(m => m.PdfViewer), { ssr: false });
 
 function formatDuration(minutes: number): string {
     if (minutes === 0) return '0h 0m';
@@ -48,20 +45,18 @@ function formatDuration(minutes: number): string {
     return `${hours}h ${remainingMinutes}m`;
 }
 
-function TimeTable({ customerId, customerName, hourlyRate }: { customerId: string; customerName: string; hourlyRate?: number }) {
+function TimeTable({ customer }: { customer: CustomerData }) {
     const { isInitialized, hasPermission, requestPermission } = useFileSystem();
     const { timesheet, stats, isLoading, isSaving, loadMonth, upsertEntry, deleteEntry, listAvailableMonths } = useTimeTracking();
-    const { companyInfo } = useCompany();
     const now = new Date();
     const [ym, setYm] = useState<{ year: number; month: number }>({ year: now.getFullYear(), month: now.getMonth() + 1 });
     const [options, setOptions] = useState<Array<{ year: number; month: number }>>([]);
-    const [previewUrl, setPreviewUrl] = useState<string>('');
 
     useEffect(() => {
         if (!isInitialized || !hasPermission) return;
-        loadMonth(customerId, customerName, ym.year, ym.month, hourlyRate);
-        listAvailableMonths(customerId, customerName).then(setOptions).catch(() => setOptions([]));
-    }, [isInitialized, hasPermission, customerId, customerName, ym.year, ym.month, hourlyRate, loadMonth, listAvailableMonths]);
+        loadMonth(customer.id, customer.name, ym.year, ym.month, customer.hourlyRate);
+        listAvailableMonths(customer.id, customer.name).then(setOptions).catch(() => setOptions([]));
+    }, [isInitialized, hasPermission, customer, ym.year, ym.month, loadMonth, listAvailableMonths]);
 
     const addOrUpdate = async (dateISO: string, start?: string, pause?: number, end?: string, notes?: string) => {
         await upsertEntry({ date: dateISO, start, pauseMinutes: pause, end, notes });
@@ -69,76 +64,8 @@ function TimeTable({ customerId, customerName, hourlyRate }: { customerId: strin
 
     const remove = async (dateISO: string) => { await deleteEntry(dateISO); };
 
-    const buildInvoiceFromTimesheet = (): Invoice | null => {
-        if (!timesheet) return null;
-        const totalMinutes = timesheet.entries.reduce((s, e) => s + (e.durationMinutes || 0), 0);
-        const hours = Math.round((totalMinutes / 60) * 100) / 100;
-        const rate = Number(hourlyRate || 0);
-        const monthLabel = format(new Date(timesheet.year, timesheet.month - 1, 1), 'MMMM yyyy');
-        const item: InvoiceItem = {
-            name: `Hours ${monthLabel}`,
-            quantity: rate, // price = hourly rate per requirements
-            price: hours,   // quantity = total hours
-            description: `Time tracking for ${customerName}`,
-        };
-        // Minimal invoice data; final number assigned on save page
-        const invoice: Invoice = {
-            id: uuidv4(),
-            invoice_number: '—',
-            invoice_date: format(new Date(), 'yyyy-MM-dd'),
-            due_date: format(new Date(new Date().setDate(new Date().getDate() + 14)), 'yyyy-MM-dd'),
-            issuer: {
-                name: companyInfo.is_freelancer && companyInfo.full_name ? companyInfo.full_name : companyInfo.name,
-                address: (companyInfo.address || '').split('\n')[0] || '',
-                city: (companyInfo.address || '').split('\n').slice(1).join(' ') || '',
-            },
-            customer: {
-                id: customerId,
-                name: customerName,
-                address: '',
-                city: '',
-                lastModified: new Date().toISOString(),
-            },
-            items: [item],
-            total: item.quantity * item.price,
-            bank_details: {
-                name: companyInfo.bank_name || '',
-                iban: companyInfo.iban || '',
-                bic: companyInfo.swift_bic || '',
-            },
-            tax_rate: companyInfo.is_vat_enabled ? (companyInfo.default_tax_rate ?? 0) : 0,
-            notes: `Autogenerated from timesheet ${monthLabel}`,
-            is_paid: false,
-            lastModified: new Date().toISOString(),
-            isDeleted: false,
-            isRectified: false,
-        };
-        return invoice;
-    };
 
-    const previewInvoice = async () => {
-        const inv = buildInvoiceFromTimesheet();
-        if (!inv) return;
-        const blob = await generateInvoicePDF(inv, companyInfo);
-        if (previewUrl) URL.revokeObjectURL(previewUrl);
-        const url = URL.createObjectURL(blob);
-        setPreviewUrl(url);
-    };
 
-    const generateInvoiceFromTimesheet = () => {
-        const inv = buildInvoiceFromTimesheet();
-        if (!inv) return;
-        
-        // Navigate to invoice creation page with prefilled data
-        const searchParams = new URLSearchParams();
-        searchParams.set('customer', customerId);
-        searchParams.set('customerName', customerName);
-        searchParams.set('hourlyRate', String(hourlyRate || 0));
-        searchParams.set('year', String(ym.year));
-        searchParams.set('month', String(ym.month));
-        
-        window.location.href = `/invoices/new?${searchParams.toString()}`;
-    };
 
     if (!isInitialized) return <div className="p-6">Loading…</div>;
     if (!hasPermission) return (
@@ -155,7 +82,7 @@ function TimeTable({ customerId, customerName, hourlyRate }: { customerId: strin
     return (
         <div className="space-y-4 h-full overflow-auto">
             <div className="flex items-center justify-between">
-                <div className="text-xl font-medium">{customerName}</div>
+                <div className="text-xl font-medium">{customer.name}</div>
                 <MonthSelector value={ym} onChange={setYm} options={options} />
             </div>
             <Card>
@@ -163,15 +90,6 @@ function TimeTable({ customerId, customerName, hourlyRate }: { customerId: strin
                     <CardTitle>Timesheet {ym.year}-{String(ym.month).padStart(2, '0')}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                    <div className="flex items-center gap-2">
-                        <Button type="button" variant="outline" onClick={previewInvoice} disabled={!timesheet || !hourlyRate}>Preview invoice from timesheet</Button>
-                        <Button type="button" onClick={generateInvoiceFromTimesheet} disabled={!timesheet || !hourlyRate}>Generate invoice from timesheet</Button>
-                    </div>
-                    {previewUrl && (
-                        <div className="border rounded">
-                            <PdfViewer src={previewUrl} className="h-[60vh]" />
-                        </div>
-                    )}
                     <div className="grid grid-cols-12 gap-2 text-sm font-medium text-neutral-600">
                         <div className="col-span-2">Kalendertag</div>
                         <div>Beginn</div>
@@ -216,14 +134,51 @@ function TimeTable({ customerId, customerName, hourlyRate }: { customerId: strin
 
 export default function Page() {
     const params = useParams();
-    const search = useSearchParams();
+    const { isInitialized, hasPermission } = useFileSystem();
     const customerId = String(params.customerId);
-    const customerName = String(search.get('name') || '');
-    const hourlyRate = search.get('rate') ? Number(search.get('rate')) : undefined;
+    const [customer, setCustomer] = useState<CustomerData | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchCustomer = async () => {
+            if (!isInitialized || !hasPermission || !customerId) return;
+
+            setIsLoading(true);
+            try {
+                const handle = await getSavedDirectoryHandle();
+                if (handle) {
+                    setDirectoryHandle(handle);
+                }
+                await loadCustomers(); // Ensures cache is warm
+                const cust = findCustomerByIdSync(customerId);
+                if (cust) {
+                    setCustomer(cust as unknown as CustomerData);
+                } else {
+                    console.warn(`Customer with id ${customerId} not found.`);
+                    // Optionally, redirect to a not-found page or show an error
+                }
+            } catch (error) {
+                console.error("Failed to load customer data", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchCustomer();
+    }, [isInitialized, hasPermission, customerId]);
+
+    if (isLoading) {
+        return <div className="p-6">Loading customer data…</div>;
+    }
+
+    if (!customer) {
+        return <div className="p-6">Customer not found.</div>;
+    }
+
     return (
         <div className="p-6 h-[calc(100vh-6rem)] overflow-auto">
             <TimeTrackingProvider>
-                <TimeTable customerId={customerId} customerName={customerName} hourlyRate={hourlyRate} />
+                <TimeTable customer={customer} />
             </TimeTrackingProvider>
         </div>
     );

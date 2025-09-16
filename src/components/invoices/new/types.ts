@@ -31,29 +31,20 @@ export type InvoiceFormAction =
     | { type: 'SET_ALL_FIELDS'; payload: Partial<InvoiceFormState> }
     | { type: 'ADD_ITEM' }
     | { type: 'REMOVE_ITEM'; index: number }
-    | { type: 'UPDATE_ITEM'; index: number; payload: Partial<ItemForm> };
+    | { type: 'UPDATE_ITEM'; index: number; payload: Partial<ItemForm> }
+    | { type: 'ADD_ITEM_WITH_PAYLOAD'; payload: ItemForm };
 
 export interface CustomerFormProps {
     formState: InvoiceFormState;
     dispatch: React.Dispatch<InvoiceFormAction>;
     allCustomers: CustomerData[];
-    matchedCustomer: CustomerData | null;
-    isEditingClient: boolean;
-    setIsEditingClient: (isEditing: boolean) => void;
-    onUpdateCustomer: () => Promise<void>;
-    onRememberCustomer: () => Promise<void>;
-    isVatEnabled: boolean;
-    isBusy: boolean;
 }
 
 export interface InvoiceItemsProps {
     formState: InvoiceFormState;
     dispatch: React.Dispatch<InvoiceFormAction>;
     allProducts: ProductData[];
-    onRememberProduct: (index: number) => Promise<void>;
-    onInsertThisMonthHours: () => Promise<void>;
-    canInsertHours: boolean;
-    isBusy: boolean;
+    onApplyMonthlyHoursToItem: (index: number) => Promise<void>;
 }
 
 export interface InvoiceSidebarProps {

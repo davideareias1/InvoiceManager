@@ -128,14 +128,14 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
                     // Try to initialize with saved directory
                     const initialized = await initializeFileSystem();
                     setHasPermission(initialized);
-                    setIsInitialized(true);
 
                     if (initialized) {
-                        // Share the directory handle with customer and product utils
+                        // Share the directory handle with all repositories BEFORE marking initialized
                         await shareDirectoryHandle();
-                        // Load invoices automatically
+                        // Load invoices automatically (non-blocking for other pages)
                         await refreshInvoicesInternal();
                     }
+                    setIsInitialized(true);
                 } else {
                     setIsInitialized(true);
                 }

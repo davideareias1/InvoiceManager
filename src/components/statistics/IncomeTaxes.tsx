@@ -33,7 +33,9 @@ export function IncomeTaxes({
     ].filter(d => d.value > 0);
 
     const totalTax = taxOnly.reduce((s, d) => s + d.value, 0);
-    const remainder = Math.max(0, baseYTD - totalTax);
+    // Use centerTotal (gross projected revenue) as the base for calculating remainder
+    const grossRevenue = typeof centerTotal === 'number' ? centerTotal : baseYTD;
+    const remainder = Math.max(0, grossRevenue - totalTax);
     const data = remainder > 0 ? [...taxOnly, { name: 'Kept After Taxes', value: remainder, isRemainder: true }] : taxOnly;
 
     return (
@@ -46,7 +48,7 @@ export function IncomeTaxes({
                             Total
                         </text>
                         <text x="50%" y="50%" dy={18} textAnchor="middle" dominantBaseline="central" fill="#64748b" className="text-[10px]">
-                            {formatCurrency(typeof centerTotal === 'number' ? centerTotal : baseYTD)}
+                            {formatCurrency(grossRevenue)}
                         </text>
                         <Pie
                             data={data}
@@ -85,7 +87,7 @@ export function IncomeTaxes({
                     </PieChart>
                 </ResponsiveContainer>
             </div>
-            <div className="mt-3 text-sm text-muted-foreground">Income Taxes (YTD)</div>
+            <div className="mt-3 text-sm text-muted-foreground">Income Taxes (Projected Annual)</div>
         </div>
     );
 }
