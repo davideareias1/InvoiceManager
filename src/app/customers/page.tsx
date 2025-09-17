@@ -83,12 +83,11 @@ export default function CustomersPage() {
                 lastModified: new Date().toISOString(),
                 isDeleted: false,
             };
-            const saved = await customerRepositoryAdapter.saveCustomer(payload);
+            await customerRepositoryAdapter.saveCustomer(payload);
             const list = await customerRepositoryAdapter.loadCustomers();
             setAllCustomers(list);
             setShowForm(false);
             setEditing(null);
-            return saved;
         } finally {
             setIsSaving(false);
         }
