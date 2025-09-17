@@ -64,69 +64,65 @@ export function InvoiceForm({
     };
 
     return (
-        <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-                {/* Left column: Customer + Items */}
-                <div className="md:col-span-8 space-y-6">
-                    <div className="space-y-4">
-                        <div>
-                            <h3 className="text-lg font-semibold text-neutral-900">Customer</h3>
-                        </div>
-                        <div className="space-y-3">
-                            <div>
-                                <label className="block text-sm font-medium text-neutral-700 mb-2">Customer</label>
-                                <Popover open={customerOpen} onOpenChange={setCustomerOpen}>
-                                    <PopoverTrigger asChild>
-                                        <Button
-                                            variant="outline"
-                                            role="combobox"
-                                            aria-expanded={customerOpen}
-                                            className="w-full justify-between"
-                                        >
-                                            <span className="truncate pr-2">
-                                                {selectedCustomerName ? selectedCustomerName : 'Select customer...'}
-                                            </span>
-                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent align="start" sideOffset={4} className="w-[420px] max-w-[90vw] p-0">
-                                        <Command>
-                                            <CommandInput placeholder="Search customers..." />
-                                            <CommandEmpty>No customer found.</CommandEmpty>
-                                            <CommandList className="max-h-72 overflow-auto">
-                                                <CommandGroup>
-                                                    {allCustomers.map((customer) => (
-                                                        <CommandItem
-                                                            key={customer.id}
-                                                            value={customer.name}
-                                                            onSelect={onSelectCustomer}
-                                                            className="py-2"
-                                                        >
-                                                            <div className="flex items-start gap-2 w-full">
-                                                                <Check
-                                                                    className={
-                                                                        'mt-0.5 h-4 w-4 ' + (customer.name === selectedCustomerName ? 'opacity-100' : 'opacity-0')
-                                                                    }
-                                                                />
-                                                                <div className="flex flex-col text-left">
-                                                                    <div className="font-medium leading-5">{customer.name}</div>
-                                                                    {(customer.address || customer.city) && (
-                                                                        <div className="text-xs text-neutral-500 leading-4">
-                                                                            {customer.address} {customer.city}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
+        <div className="h-full grid grid-cols-12 gap-4">
+            {/* Left Column: Customer & Items */}
+            <div className="col-span-8 flex flex-col gap-4">
+                {/* Customer Selection */}
+                <div className="bg-white rounded-lg border border-neutral-200 p-4">
+                    <h3 className="text-base font-semibold text-neutral-900 mb-3">Customer</h3>
+                    <Popover open={customerOpen} onOpenChange={setCustomerOpen}>
+                        <PopoverTrigger asChild>
+                            <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={customerOpen}
+                                className="w-full justify-between h-10"
+                            >
+                                <span className="truncate pr-2">
+                                    {selectedCustomerName ? selectedCustomerName : 'Select customer...'}
+                                </span>
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="start" sideOffset={4} className="w-[420px] max-w-[90vw] p-0">
+                            <Command>
+                                <CommandInput placeholder="Search customers..." />
+                                <CommandEmpty>No customer found.</CommandEmpty>
+                                <CommandList className="max-h-72 overflow-auto">
+                                    <CommandGroup>
+                                        {allCustomers.map((customer) => (
+                                            <CommandItem
+                                                key={customer.id}
+                                                value={customer.name}
+                                                onSelect={onSelectCustomer}
+                                                className="py-2"
+                                            >
+                                                <div className="flex items-start gap-2 w-full">
+                                                    <Check
+                                                        className={
+                                                            'mt-0.5 h-4 w-4 ' + (customer.name === selectedCustomerName ? 'opacity-100' : 'opacity-0')
+                                                        }
+                                                    />
+                                                    <div className="flex flex-col text-left">
+                                                        <div className="font-medium leading-5">{customer.name}</div>
+                                                        {(customer.address || customer.city) && (
+                                                            <div className="text-xs text-neutral-500 leading-4">
+                                                                {customer.address} {customer.city}
                                                             </div>
-                                                        </CommandItem>
-                                                    ))}
-                                                </CommandGroup>
-                                            </CommandList>
-                                        </Command>
-                                    </PopoverContent>
-                                </Popover>
-                            </div>
-                        </div>
-                    </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </CommandItem>
+                                        ))}
+                                    </CommandGroup>
+                                </CommandList>
+                            </Command>
+                        </PopoverContent>
+                    </Popover>
+                </div>
+
+                {/* Items Section */}
+                <div>
                     <InvoiceItems
                         formState={formState}
                         dispatch={dispatch}
@@ -134,8 +130,10 @@ export function InvoiceForm({
                         onApplyMonthlyHoursToItem={onApplyMonthlyHoursToItem}
                     />
                 </div>
+            </div>
 
-                {/* Right column: Details + Totals + Actions */}
+            {/* Right Column: Invoice Details & Summary */}
+            <div className="col-span-4">
                 <InvoiceSidebar
                     plannedNumber={plannedNumber}
                     formState={formState}

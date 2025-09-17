@@ -46,7 +46,7 @@ function formatDuration(minutes: number): string {
 }
 
 function TimeTable({ customer }: { customer: CustomerData }) {
-    const { isInitialized, hasPermission, requestPermission } = useFileSystem();
+    const { isInitialized, hasPermission } = useFileSystem();
     const { timesheet, stats, isLoading, isSaving, loadMonth, upsertEntry, deleteEntry, listAvailableMonths } = useTimeTracking();
     const now = new Date();
     const [ym, setYm] = useState<{ year: number; month: number }>({ year: now.getFullYear(), month: now.getMonth() + 1 });
@@ -67,17 +67,6 @@ function TimeTable({ customer }: { customer: CustomerData }) {
 
 
 
-    if (!isInitialized) return <div className="p-6">Loading…</div>;
-    if (!hasPermission) return (
-        <div className="p-6">
-            <Card>
-                <CardHeader><CardTitle>Time Tracking</CardTitle></CardHeader>
-                <CardContent>
-                    <Button onClick={() => requestPermission()}>Grant Folder Access</Button>
-                </CardContent>
-            </Card>
-        </div>
-    );
 
     return (
         <div className="space-y-4 h-full overflow-auto">

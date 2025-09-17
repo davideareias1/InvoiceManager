@@ -5,7 +5,9 @@ import { FileSystemProvider } from '../infrastructure/contexts/FileSystemContext
 import { CompanyProvider } from '../infrastructure/contexts/CompanyContext'
 import { GoogleDriveProvider } from '../infrastructure/contexts/GoogleDriveContext'
 import { Navigation } from '../components/Navigation'
+import { FolderAccessGate } from '../components/FolderAccessGate'
 import { TaxSettingsProvider } from '@/infrastructure/contexts/TaxSettingsContext'
+import { TimeAnalyticsProvider } from '@/infrastructure/contexts/TimeAnalyticsContext'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -28,10 +30,14 @@ export default function RootLayout({
                     <GoogleDriveProvider>
                         <CompanyProvider>
                             <TaxSettingsProvider>
-                                <Navigation />
-                                <main className="h-[calc(100vh-4rem)] overflow-hidden">
-                                    {children}
-                                </main>
+                                <TimeAnalyticsProvider>
+                                    <Navigation />
+                                    <main className="h-[calc(100vh-4rem)] overflow-hidden">
+                                        <FolderAccessGate>
+                                            {children}
+                                        </FolderAccessGate>
+                                    </main>
+                                </TimeAnalyticsProvider>
                             </TaxSettingsProvider>
                         </CompanyProvider>
                     </GoogleDriveProvider>

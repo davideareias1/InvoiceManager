@@ -328,48 +328,61 @@ export default function NewInvoicePage() {
     }
 
     return (
-        <div className={`${step === 'preview' ? 'p-3' : 'p-6'} h-full overflow-hidden`}>
-            <Card className="h-full flex flex-col">
-                <CardHeader className="shrink-0">
-                    <CardTitle>New Invoice</CardTitle>
-                </CardHeader>
-                <CardContent className={(step === 'preview' ? 'space-y-2' : 'space-y-4') + ' flex-1 min-h-0 overflow-hidden'}>
-                    {step === 'edit' && (
-                        <div className="h-full overflow-auto pr-1">
-                            <InvoiceForm
-                                allCustomers={allCustomers}
-                                allProducts={allProducts}
-                                plannedNumber={plannedNumber}
-                                taxRate={taxRate}
-                                isBusy={isBusy}
-                                totals={computedTotals}
-                                isValid={isValid}
-                                onApplyMonthlyHoursToItem={applyMonthlyHoursToItem}
-                                onPreview={goPreview}
-                                dispatch={dispatch}
-                                formState={formState}
-                            />
-                        </div>
-                    )}
+        <div className="h-screen flex flex-col bg-neutral-50">
+            {step === 'edit' && (
+                <div className="p-4 h-full">
+                    <InvoiceForm
+                        allCustomers={allCustomers}
+                        allProducts={allProducts}
+                        plannedNumber={plannedNumber}
+                        taxRate={taxRate}
+                        isBusy={isBusy}
+                        totals={computedTotals}
+                        isValid={isValid}
+                        onApplyMonthlyHoursToItem={applyMonthlyHoursToItem}
+                        onPreview={goPreview}
+                        dispatch={dispatch}
+                        formState={formState}
+                    />
+                </div>
+            )}
 
-                    {step === 'preview' && (
-                        <div className="flex flex-col h-full min-h-0 gap-2">
-                            <div className="text-sm text-neutral-600 shrink-0">Preview of invoice #{plannedNumber} (final number assigned on save)</div>
-                            <div className="flex-1 min-h-0 overflow-auto">
-                                {previewUrl ? (
-                                    <PdfViewer src={previewUrl} className="border border-neutral-200 rounded w-full h-full" />
-                                ) : (
-                                    <div className="p-4">Generating preview…</div>
-                                )}
+            {step === 'preview' && (
+                <div className="h-full flex flex-col">
+                    {/* Preview Header */}
+                    <div className="bg-white border-b border-neutral-200 px-6 py-4 shrink-0">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h1 className="text-2xl font-bold text-neutral-900">Invoice Preview</h1>
+                                <p className="text-sm text-neutral-600 mt-1">Review before saving</p>
                             </div>
-                            <div className="flex justify-between shrink-0">
-                                <Button variant="outline" onClick={() => setStep('edit')}>Back</Button>
-                                <Button onClick={save} disabled={isBusy}>Save</Button>
+                            <div className="flex items-center gap-3">
+                                <Button variant="outline" onClick={() => setStep('edit')}>
+                                    Back to Edit
+                                </Button>
+                                <Button 
+                                    onClick={save} 
+                                    disabled={isBusy}
+                                    className="bg-neutral-900 hover:bg-neutral-800"
+                                >
+                                    {isBusy ? 'Saving...' : 'Save Invoice'}
+                                </Button>
                             </div>
                         </div>
-                    )}
-                </CardContent>
-            </Card>
+                    </div>
+
+                    {/* Preview Content */}
+                    <div className="flex-1 min-h-0 p-4">
+                        {previewUrl ? (
+                            <PdfViewer src={previewUrl} className="border border-neutral-200 rounded-lg w-full h-full shadow-sm" />
+                        ) : (
+                            <div className="flex items-center justify-center h-full">
+                                <div className="text-neutral-600">Generating preview…</div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

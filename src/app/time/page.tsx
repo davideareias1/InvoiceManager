@@ -9,7 +9,7 @@ import { loadCustomers } from '@/infrastructure/repositories/customerRepository'
 import type { CustomerData } from '@/domain/models';
 
 export default function TimePage() {
-    const { isInitialized, hasPermission, requestPermission } = useFileSystem();
+    const { isInitialized, hasPermission } = useFileSystem();
     const [customers, setCustomers] = useState<CustomerData[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -27,23 +27,6 @@ export default function TimePage() {
         run();
     }, [isInitialized, hasPermission]);
 
-    if (!isInitialized) return <div className="p-6">Loading…</div>;
-
-    if (!hasPermission) {
-        return (
-            <div className="p-6">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Time Tracking</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        <div className="text-sm text-neutral-600">Grant access to your InvoiceManager folder to load customers.</div>
-                        <Button onClick={() => requestPermission()} disabled={isLoading}>Grant Folder Access</Button>
-                    </CardContent>
-                </Card>
-            </div>
-        );
-    }
 
     return (
         <div className="p-6 h-[calc(100vh-6rem)] overflow-auto">

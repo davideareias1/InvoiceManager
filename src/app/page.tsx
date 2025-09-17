@@ -1,25 +1,19 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { useFileSystem } from '../infrastructure/contexts/FileSystemContext';
-import { isFileSystemAccessSupported } from '../infrastructure/filesystem/fileSystemStorage';
 import { useCompany } from '../infrastructure/contexts/CompanyContext';
-import { invoiceRepositoryAdapter } from '../infrastructure/repositories/invoiceRepository';
-import { CreateInvoice, ListInvoices } from '../application/usecases';
+import { FolderSelection } from '../components/FolderSelection';
+import Link from 'next/link';
+import { CheckCircle2, Folder } from 'lucide-react';
 
 export default function HomePage() {
-    const { isInitialized, hasPermission, requestPermission, loadInvoices } = useFileSystem();
-    const [isFSA, setIsFSA] = useState(false);
-    const { companyInfo, loadAndSetCompanyInfo } = useCompany();
+    const { isInitialized, hasPermission, loadInvoices, currentFolderName } = useFileSystem();
+    const { loadAndSetCompanyInfo } = useCompany();
 
-    // Update FSA support after component mounts
-    useEffect(() => {
-        setIsFSA(isFileSystemAccessSupported());
-    }, []);
-
+    // ===== EFFECTS =====
     useEffect(() => {
         if (isInitialized && hasPermission) {
             loadInvoices();
@@ -27,58 +21,123 @@ export default function HomePage() {
         }
     }, [isInitialized, hasPermission, loadInvoices, loadAndSetCompanyInfo]);
 
-    const handleGrantAccess = async () => {
-        await requestPermission();
-    };
+    // ===== RENDER =====
+    
+    // Gated globally in layout, so we can assume access here
 
-    const handleQuickInvoice = async () => {
-        const create = new CreateInvoice(invoiceRepositoryAdapter);
-        await create.execute({
-            issuer: companyInfo as any,
-            invoice_date: new Date().toISOString().slice(0, 10),
-            items: [],
-            total: 0,
-            customer: {
-                id: 'draft', name: 'Draft', address: '', city: '', lastModified: new Date().toISOString()
-            } as any,
-            bank_details: {
-                name: companyInfo?.bank_name || '', iban: companyInfo?.iban || '', bic: companyInfo?.swift_bic || ''
-            } as any,
-        });
-    };
-
+    // Show recommendations when folder is selected
     return (
-        <div className="p-6 space-y-6">
-            <Card>
-                <CardHeader>
-                    <CardTitle>InvoiceManager</CardTitle>
-                    <CardDescription>Minimal, action-first interface.</CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-3">
-                    {!hasPermission ? (
-                        <div className="flex flex-col gap-2">
-                            <Button onClick={handleGrantAccess} disabled={!isFSA}>
-                                {isFSA ? 'Grant Folder Access' : 'Folder Access Not Supported'}
-                            </Button>
-                            {!isFSA && (
-                                <p className="text-sm text-neutral-600">
-                                    Your browser does not support selecting a local folder. On Firefox, this feature is unavailable.
-                                    You can still download PDFs, or use a Chromium-based browser (Chrome, Edge, Brave) to enable folder access.
-                                </p>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="flex gap-3">
-                            <Button onClick={handleQuickInvoice}>New Invoice</Button>
-                            <Button variant="outline" onClick={() => new ListInvoices(invoiceRepositoryAdapter).execute()}>Refresh Invoices</Button>
-                        </div>
-                    )}
-                    <div className="flex gap-2 items-center">
-                        <Input placeholder="Search (coming soon)" />
-                        <Button variant="outline">Search</Button>
+        <div className="min-h-screen bg-white">
+            <div className="max-w-5xl mx-auto px-6 py-16">
+                {/* Header */}
+                <div className="text-center mb-16">
+                    <h1 className="text-5xl font-light text-black mb-4">Welcome back</h1>
+                    <p className="text-xl text-gray-600">Choose what you'd like to work on</p>
+                </div>
+
+                {/* Action Grid */}
+                <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                    {/* Create Invoice */}
+                    <Link href="/invoices/new">
+                        <Card className="group hover:shadow-xl transition-all duration-300 cursor-pointer border border-gray-200 hover:border-black bg-white">
+                            <CardHeader className="pb-4">
+                                <CardTitle className="text-2xl font-light text-black group-hover:text-black transition-colors">
+                                    Create Invoice
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <CardDescription className="text-lg text-gray-600 leading-relaxed">
+                                    Generate a new professional invoice for your clients
+                                </CardDescription>
+                            </CardContent>
+                        </Card>
+                    </Link>
+
+                    {/* Manage Invoices */}
+                    <Link href="/invoices">
+                        <Card className="group hover:shadow-xl transition-all duration-300 cursor-pointer border border-gray-200 hover:border-black bg-white">
+                            <CardHeader className="pb-4">
+                                <CardTitle className="text-2xl font-light text-black group-hover:text-black transition-colors">
+                                    Manage Invoices
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <CardDescription className="text-lg text-gray-600 leading-relaxed">
+                                    View, edit, and organize all your invoices
+                                </CardDescription>
+                            </CardContent>
+                        </Card>
+                    </Link>
+
+                    {/* Track Time */}
+                    <Link href="/time">
+                        <Card className="group hover:shadow-xl transition-all duration-300 cursor-pointer border border-gray-200 hover:border-black bg-white">
+                            <CardHeader className="pb-4">
+                                <CardTitle className="text-2xl font-light text-black group-hover:text-black transition-colors">
+                                    Track Time
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <CardDescription className="text-lg text-gray-600 leading-relaxed">
+                                    Log billable hours and manage project time
+                                </CardDescription>
+                            </CardContent>
+                        </Card>
+                    </Link>
+
+                    {/* View Statistics */}
+                    <Link href="/statistics">
+                        <Card className="group hover:shadow-xl transition-all duration-300 cursor-pointer border border-gray-200 hover:border-black bg-white">
+                            <CardHeader className="pb-4">
+                                <CardTitle className="text-2xl font-light text-black group-hover:text-black transition-colors">
+                                    View Statistics
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <CardDescription className="text-lg text-gray-600 leading-relaxed">
+                                    Analyze revenue, taxes, and business performance
+                                </CardDescription>
+                            </CardContent>
+                        </Card>
+                    </Link>
+                </div>
+
+                {/* Secondary Actions */}
+                <div className="flex justify-center gap-8 mt-12">
+                    <Link href="/settings">
+                        <Button variant="outline" className="px-8 py-3 text-base font-light border-gray-300 hover:border-black hover:bg-black hover:text-white transition-all duration-300">
+                            Settings
+                        </Button>
+                    </Link>
+                    <Link href="/customers">
+                        <Button variant="outline" className="px-8 py-3 text-base font-light border-gray-300 hover:border-black hover:bg-black hover:text-white transition-all duration-300">
+                            Customers
+                        </Button>
+                    </Link>
+                </div>
+
+                {/* Footer */}
+                <div className="text-center mt-16">
+                    <p className="text-gray-500 font-light">
+                        Everything you need to manage invoices professionally
+                    </p>
+                </div>
+            </div>
+            
+            {/* Folder Status - only show when folder is selected */}
+            {isInitialized && hasPermission && (
+                <div className="fixed bottom-4 right-4">
+                    <div className="bg-white border border-gray-200 rounded px-3 py-2 shadow-sm flex items-center gap-2">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                <span className="text-xs text-gray-600 font-light">Folder Connected</span>
+                        <FolderSelection isDialog={true}>
+                            <button className="text-xs text-gray-400 hover:text-gray-600 font-light">
+                                Change
+                            </button>
+                        </FolderSelection>
                     </div>
-                </CardContent>
-            </Card>
+                </div>
+            )}
         </div>
     );
 }

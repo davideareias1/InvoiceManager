@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import {
     isFileSystemAccessSupported,
     requestDirectoryPermission,
+    createNewWorkspaceDirectory,
     hasSavedDirectory,
     initializeFileSystem,
     getSavedDirectoryHandle,
@@ -24,7 +25,9 @@ interface FileSystemContextType {
     hasPermission: boolean;
     directoryRequested: boolean;
     invoices: Invoice[];
+    currentFolderName: string | null;
     requestPermission: () => Promise<boolean>;
+    createWorkspace: () => Promise<boolean>;
     resetDirectoryAccess: () => Promise<void>;
     saveInvoices: (invoices: Invoice[]) => Promise<boolean>;
     saveInvoice: (invoice: Invoice) => Promise<boolean>;
@@ -55,6 +58,7 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [currentFolderName, setCurrentFolderName] = useState<string | null>(null);
     
     // For Google Drive backup - this will be passed to child context components
     const [googleDriveBackup, setGoogleDriveBackup] = useState<{
@@ -77,6 +81,9 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
             // Get the current directory handle from the storage API
             const currentHandle = await getSavedDirectoryHandle();
             if (currentHandle) {
+                // Get the folder name for display
+                setCurrentFolderName(currentHandle.name);
+                
                 // Share it with all utilities
                 setFileSystemDirectoryHandle(currentHandle);
                 setCustomerDirectoryHandle(currentHandle);
@@ -109,6 +116,7 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
             setHasPermission(false);
             setDirectoryRequested(false);
             setInvoices([]);
+            setCurrentFolderName(null);
         } catch (error) {
             console.error('Error resetting directory access:', error);
         }
@@ -160,6 +168,20 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
         }
 
         return granted;
+    };
+
+    // Create workspace and request permission to it
+    const createWorkspace = async (): Promise<boolean> => {
+        setDirectoryRequested(true);
+        const created = await createNewWorkspaceDirectory();
+        setHasPermission(created);
+
+        if (created) {
+            await shareDirectoryHandle();
+            await refreshInvoicesInternal();
+        }
+
+        return created;
     };
 
     // Public function to refresh invoices
@@ -326,7 +348,9 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
         hasPermission,
         directoryRequested,
         invoices,
+        currentFolderName,
         requestPermission,
+        createWorkspace,
         resetDirectoryAccess: resetDirectoryAccessInternal,
         saveInvoices,
         saveInvoice,

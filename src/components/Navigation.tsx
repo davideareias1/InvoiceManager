@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 
 const navigationItems = [
     { href: '/', label: 'Home' },
+    { href: '/customers', label: 'Customers' },
     { href: '/invoices', label: 'Invoices' },
     { href: '/invoices/new', label: 'Create Invoice' },
     { href: '/time', label: 'Time' },

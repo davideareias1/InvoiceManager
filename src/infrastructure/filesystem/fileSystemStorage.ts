@@ -401,6 +401,43 @@ export async function requestDirectoryPermission(): Promise<boolean> {
 }
 
 /**
+ * First-time setup: Ask the user for a parent location, then create/select
+ * an "InvoiceManager" folder there and initialize the required structure.
+ */
+export async function createNewWorkspaceDirectory(): Promise<boolean> {
+    if (!isFileSystemAccessSupported()) {
+        return false;
+    }
+
+    try {
+        // Ask user to pick a parent directory where the workspace will be created
+        const parentHandle = await window.showDirectoryPicker!();
+
+        // Ensure we have permission on the selected parent directory
+        const hasParentPermission = await verifyHandlePermission(parentHandle);
+        if (!hasParentPermission) {
+            return false;
+        }
+
+        // Create or select the workspace folder named "InvoiceManager"
+        const workspaceName = 'InvoiceManager';
+        const workspaceHandle = await parentHandle.getDirectoryHandle(workspaceName, { create: true });
+
+        // Save and set as the active directory handle
+        await saveDirectoryHandle(workspaceHandle);
+        directoryHandle = workspaceHandle;
+
+        // Initialize the expected structure inside the workspace
+        await initializeDirectoryStructure();
+
+        return true;
+    } catch (error) {
+        console.error('Error creating workspace directory:', error);
+        return false;
+    }
+}
+
+/**
  * Load invoices from files in the selected directory (now organized by year)
  */
 export async function loadInvoicesFromFiles(): Promise<Invoice[]> {

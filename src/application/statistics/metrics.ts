@@ -65,6 +65,13 @@ export interface IncomeTaxEstimate {
     solidaritySurcharge: number; // projected annual solidarity surcharge
     prepaymentsYearToDate: number; // actual prepayments made YTD
     totalDueYTD: number; // projected annual taxes - actual prepayments YTD
+    // Current vs projected breakdown
+    incomeTaxCurrent: number; // income tax on current YTD revenue
+    incomeTaxProjected: number; // additional income tax on projected remaining revenue
+    churchTaxCurrent: number; // church tax on current YTD revenue
+    churchTaxProjected: number; // additional church tax on projected remaining revenue
+    solidaritySurchargeCurrent: number; // solidarity surcharge on current YTD revenue
+    solidaritySurchargeProjected: number; // additional solidarity surcharge on projected remaining revenue
 }
 
 // ===== INTERNAL HELPERS =====
@@ -242,6 +249,90 @@ export function computeRevenueMetrics(
     return { averageMonthly, projectedAnnual, totalYTD };
 }
 
+/**
+ * Return a descending list of invoice years present in the dataset.
+ */
+export function extractInvoiceYears(invoices: Invoice[]): number[] {
+    const years = new Set<number>();
+    for (const inv of invoices) {
+        if (inv.isDeleted) continue;
+        const date = parseDate(inv.invoice_date);
+        if (!date) continue;
+        years.add(date.getFullYear());
+    }
+    // Ensure current year is present even if no invoices yet, for selection convenience
+    years.add(new Date().getFullYear());
+    return Array.from(years).sort((a, b) => b - a);
+}
+
+/**
+ * Monthly totals for an arbitrary year.
+ */
+export function computeMonthlyTotalsForYear(
+    invoices: Invoice[],
+    year: number,
+): MonthlyTotalItem[] {
+    const monthlyTotalsMap: Record<string, number> = {};
+    for (const inv of invoices) {
+        if (inv.isDeleted) continue;
+        const date = parseDate(inv.invoice_date);
+        if (!date || date.getFullYear() !== year) continue;
+        const net = typeof inv.total === 'number' ? inv.total : calculateInvoiceNet(inv);
+        const monthKey = formatMonth(date);
+        monthlyTotalsMap[monthKey] = (monthlyTotalsMap[monthKey] || 0) + net;
+    }
+    return Object.entries(monthlyTotalsMap)
+        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .map(([month, total]) => ({ month, total }));
+}
+
+/**
+ * Revenue metrics for an arbitrary year. For non-current years, projection equals total and
+ * averageMonthly is computed over 12 months.
+ */
+export function computeRevenueMetricsForYear(
+    invoices: Invoice[],
+    year: number,
+    now: Date = new Date(),
+): RevenueMetrics {
+    const currentYear = now.getFullYear();
+    const invoicesForYear = invoices.filter(inv => {
+        if (inv.isDeleted) return false;
+        const date = parseDate(inv.invoice_date);
+        return date && date.getFullYear() === year;
+    });
+
+    if (invoicesForYear.length === 0) {
+        return { averageMonthly: 0, projectedAnnual: 0, totalYTD: 0 };
+    }
+
+    const totalYTD = invoicesForYear.reduce((sum, inv) => {
+        const net = typeof inv.total === 'number' ? inv.total : calculateInvoiceNet(inv);
+        return sum + net;
+    }, 0);
+
+    if (year !== currentYear) {
+        // Past or future year: no projection beyond the actual total; average over full year
+        return {
+            averageMonthly: totalYTD / 12,
+            projectedAnnual: totalYTD,
+            totalYTD,
+        };
+    }
+
+    // Current year: use elapsed months and day-of-year projection
+    const dates = invoicesForYear.map(inv => parseDate(inv.invoice_date)).filter(d => d !== null) as Date[];
+    const firstDate = new Date(Math.min(...dates.map(d => d.getTime())));
+    const firstInvoiceMonthInYear = firstDate.getMonth();
+    const currentMonth = now.getMonth();
+    const monthsElapsed = Math.max(1, currentMonth - firstInvoiceMonthInYear + 1);
+    const averageMonthly = totalYTD / monthsElapsed;
+    const dayOfYearNow = dayOfYear(now);
+    const projectedAnnual = dayOfYearNow > 0 ? (totalYTD / dayOfYearNow) * 365 : 0;
+
+    return { averageMonthly, projectedAnnual, totalYTD };
+}
+
 export function computeVatSimulation(
     invoices: Invoice[],
     company: CompanyInfo,
@@ -372,15 +463,22 @@ export function estimateIncomeTaxes(
 
     const annualDeductible = Math.max(0, tax.annualDeductibleExpenses || 0);
     const taxableAnnual = Math.max(0, projectedAnnualRevenue - annualDeductible);
+    const taxableYTD = Math.max(0, revenueYTD - (annualDeductible * (doy / 365)));
 
-    // Compute annual income tax using an approximate German 2025 tariff
+    // Compute taxes for current YTD and projected annual
     const incomeTaxAnnual = germanIncomeTax2025(taxableAnnual, !!tax.jointAssessment);
+    const incomeTaxCurrentOnly = germanIncomeTax2025(taxableYTD, !!tax.jointAssessment);
+    const incomeTaxProjectedOnly = Math.max(0, incomeTaxAnnual - incomeTaxCurrentOnly);
 
-    // Calculate taxes based on PROJECTED annual amounts, not scaled to YTD
+    // Calculate church and solidarity taxes for current and projected
     const churchRate = Math.max(0, tax.churchTaxRatePercent || 0) / 100;
-    const churchTax = incomeTaxAnnual * churchRate;
+    const churchTaxCurrent = incomeTaxCurrentOnly * churchRate;
+    const churchTaxProjected = incomeTaxProjectedOnly * churchRate;
+    const churchTax = churchTaxCurrent + churchTaxProjected;
 
-    const solidaritySurcharge = solidaritySurchargeAnnual(incomeTaxAnnual);
+    const solidaritySurchargeCurrent = solidaritySurchargeAnnual(incomeTaxCurrentOnly);
+    const solidaritySurchargeProjected = solidaritySurchargeAnnual(incomeTaxAnnual) - solidaritySurchargeCurrent;
+    const solidaritySurcharge = solidaritySurchargeCurrent + solidaritySurchargeProjected;
 
     const prepayments = Math.max(0, tax.prepaymentsYearToDate || 0);
     const totalDue = incomeTaxAnnual + churchTax + solidaritySurcharge - prepayments;
@@ -392,6 +490,13 @@ export function estimateIncomeTaxes(
         solidaritySurcharge,
         prepaymentsYearToDate: prepayments,
         totalDueYTD: totalDue,
+        // Current vs projected breakdown
+        incomeTaxCurrent: incomeTaxCurrentOnly,
+        incomeTaxProjected: incomeTaxProjectedOnly,
+        churchTaxCurrent,
+        churchTaxProjected,
+        solidaritySurchargeCurrent,
+        solidaritySurchargeProjected,
     };
 }
 

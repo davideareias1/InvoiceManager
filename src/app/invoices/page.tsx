@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertDialog } from '@/components/ui/alert-dialog';
 import { useFileSystem } from '../../infrastructure/contexts/FileSystemContext';
-import { isFileSystemAccessSupported } from '../../infrastructure/filesystem/fileSystemStorage';
 import { getSavedDirectoryHandle, setDirectoryHandle as setFsHandle } from '../../infrastructure/filesystem/fileSystemStorage';
 import { setDirectoryHandle as setCustomerHandle } from '../../infrastructure/repositories/customerRepository';
 import { setDirectoryHandle as setProductHandle } from '../../infrastructure/repositories/productRepository';
@@ -27,8 +26,7 @@ import { useCompany } from '../../infrastructure/contexts/CompanyContext';
 // helpers and dialogs are now imported from application/components layers
 
 export default function InvoicesPage() {
-    const { isInitialized, hasPermission, loadInvoices, refreshInvoices, requestPermission } = useFileSystem();
-    const isFSA = typeof window !== 'undefined' && isFileSystemAccessSupported();
+    const { isInitialized, hasPermission, loadInvoices, refreshInvoices } = useFileSystem();
     const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const { companyInfo } = useCompany();
@@ -74,18 +72,6 @@ export default function InvoicesPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isInitialized, hasPermission]);
 
-    const handleGrantAccess = async () => {
-        setIsLoading(true);
-        try {
-            const granted = await requestPermission();
-            if (granted) {
-                const list = await loadInvoices();
-                setAllInvoices(list);
-            }
-        } finally {
-            setIsLoading(false);
-        }
-    };
 
     // Unique customers for filter
     const customers = useMemo(() => {
@@ -249,33 +235,6 @@ export default function InvoicesPage() {
         }
     };
 
-    if (!isInitialized) {
-        return <div className="p-6">Loading…</div>;
-    }
-
-    if (!hasPermission) {
-        return (
-            <div className="p-6">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Invoices</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        <div className="text-sm text-neutral-600">
-                            Grant access to your InvoiceManager folder to load invoices. Select the folder that contains the subfolders "invoices", "customers", and "products".
-                        </div>
-                        <Button onClick={handleGrantAccess} disabled={isLoading || !isFSA}>{isLoading ? 'Processing…' : (isFSA ? 'Grant Folder Access' : 'Folder Access Not Supported') }</Button>
-                        {!isFSA && (
-                            <div className="text-sm text-neutral-600">
-                                Your browser does not support selecting a local folder. On Firefox, this feature is unavailable.
-                                You can still use the app to generate and download PDFs, or switch to a Chromium-based browser (Chrome, Edge, Brave) to enable folder access.
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
-        );
-    }
 
     return (
         <div className="p-6 h-[calc(100vh-4rem)] box-border flex flex-col">
