@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Invoice, InvoiceStatus } from '@/domain/models';
 import { formatCurrency, formatDate } from '@/shared/formatters';
-import { getDisplayStatus } from '@/application/invoices/presentation';
+import { getDisplayStatus, getValidActions } from '@/application/invoices/presentation';
 
 export type InvoicesTableProps = {
     invoices: Invoice[];
@@ -47,10 +47,33 @@ export function InvoicesTable({ invoices, isLoading, onTogglePaid, onDownload, o
                             <TableCell>{getDisplayStatus(inv)}{(inv.status === InvoiceStatus.Rectified || inv.isRectified) && inv.rectifiedBy ? ` (rectified by #${inv.rectifiedBy})` : ''}</TableCell>
                             <TableCell>
                                 <div className="flex flex-wrap gap-2">
-                                    <Button size="sm" variant="outline" className="w-24" onClick={() => onTogglePaid(inv)}>{inv.is_paid ? 'Mark unpaid' : 'Mark paid'}</Button>
-                                    <Button size="sm" variant="outline" className="w-24" onClick={() => onDownload(inv)}>Download</Button>
-                                    <Button size="sm" variant="outline" className="w-24" onClick={() => onRectify(inv)}>Rectify</Button>
-                                    <Button size="sm" variant="destructive" className="w-24" onClick={() => onDelete(inv)}>Delete</Button>
+                                    {(() => {
+                                        const actions = getValidActions(inv);
+                                        return (
+                                            <>
+                                                {actions.canMarkPaid && (
+                                                    <Button size="sm" variant="outline" className="w-24" onClick={() => onTogglePaid(inv)}>
+                                                        {inv.is_paid ? 'Mark unpaid' : 'Mark paid'}
+                                                    </Button>
+                                                )}
+                                                {actions.canDownload && (
+                                                    <Button size="sm" variant="outline" className="w-24" onClick={() => onDownload(inv)}>
+                                                        Download
+                                                    </Button>
+                                                )}
+                                                {actions.canRectify && (
+                                                    <Button size="sm" variant="outline" className="w-24" onClick={() => onRectify(inv)}>
+                                                        Rectify
+                                                    </Button>
+                                                )}
+                                                {actions.canDelete && (
+                                                    <Button size="sm" variant="destructive" className="w-24" onClick={() => onDelete(inv)}>
+                                                        Delete
+                                                    </Button>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
                                 </div>
                             </TableCell>
                         </TableRow>

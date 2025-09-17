@@ -37,4 +37,38 @@ export function getDisplayStatus(invoice: Invoice): string {
     return getStatusLabel(invoice);
 }
 
+// ===== INVOICE ACTION VALIDATION =====
+
+export interface InvoiceActions {
+    canMarkPaid: boolean;
+    canDownload: boolean;
+    canRectify: boolean;
+    canDelete: boolean;
+}
+
+/**
+ * Determines which actions are valid for a given invoice based on its state
+ */
+export function getValidActions(invoice: Invoice): InvoiceActions {
+    const isRectification = isRectificationInvoice(invoice);
+    const isRectified = invoice.status === InvoiceStatus.Rectified || invoice.isRectified;
+
+    return {
+        // Mark paid: Only available for normal invoices that are not rectifications and not rectified
+        // Rectified invoices cannot be marked as paid since they've been cancelled
+        // Rectification invoices cannot be marked as paid since they have negative amounts
+        canMarkPaid: !isRectification && !isRectified,
+        
+        // Download: Always available (you can download any invoice)
+        canDownload: true,
+        
+        // Rectify: Only available for normal invoices that haven't been rectified yet
+        // Not available for rectification invoices or already rectified invoices
+        canRectify: !isRectification && !isRectified,
+        
+        // Delete: Available for all invoices, but use with caution
+        canDelete: true
+    };
+}
+
 
