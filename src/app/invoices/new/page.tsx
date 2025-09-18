@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useFileSystem } from '@/infrastructure/contexts/FileSystemContext';
 import { getSavedDirectoryHandle, setDirectoryHandle as setFsHandle } from '@/infrastructure/filesystem/fileSystemStorage';
 import { setDirectoryHandle as setCustomerHandle, loadCustomers } from '@/infrastructure/repositories/customerRepository';
-import { setDirectoryHandle as setProductHandle, loadProducts } from '@/infrastructure/repositories/productRepository';
+import { setDirectoryHandle as setProductHandle, loadProducts, saveProduct as persistProduct } from '@/infrastructure/repositories/productRepository';
 import { setDirectoryHandle as setInvoiceHandle, invoiceRepositoryAdapter } from '@/infrastructure/repositories/invoiceRepository';
 import { setDirectoryHandle as setTimeHandle, loadMonth as loadTimeMonth } from '@/infrastructure/repositories/timeTrackingRepository';
 import { CreateInvoice } from '@/application/usecases';
@@ -340,6 +340,15 @@ export default function NewInvoicePage() {
                         totals={computedTotals}
                         isValid={isValid}
                         onApplyMonthlyHoursToItem={applyMonthlyHoursToItem}
+                        onSaveProduct={async (p) => {
+                            const saved = await persistProduct(p);
+                            // Refresh local list optimistically
+                            setAllProducts(prev => {
+                                const next = prev.filter(x => x.id !== saved.id).concat(saved);
+                                return next.slice().sort((a, b) => a.name.localeCompare(b.name));
+                            });
+                            return saved;
+                        }}
                         onPreview={goPreview}
                         dispatch={dispatch}
                         formState={formState}

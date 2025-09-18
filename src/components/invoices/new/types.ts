@@ -45,6 +45,7 @@ export interface InvoiceItemsProps {
     dispatch: React.Dispatch<InvoiceFormAction>;
     allProducts: ProductData[];
     onApplyMonthlyHoursToItem: (index: number) => Promise<void>;
+    onSaveProduct: (product: Partial<ProductData>) => Promise<ProductData>;
 }
 
 export interface InvoiceSidebarProps {

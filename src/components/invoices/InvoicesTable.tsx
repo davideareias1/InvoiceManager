@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Invoice, InvoiceStatus } from '@/domain/models';
 import { formatCurrency, formatDate } from '@/shared/formatters';
-import { getDisplayStatus, getValidActions } from '@/application/invoices/presentation';
+import { getDisplayStatus, getValidActions, isRectificationInvoice } from '@/application/invoices/presentation';
 
 export type InvoicesTableProps = {
     invoices: Invoice[];
@@ -39,7 +39,16 @@ export function InvoicesTable({ invoices, isLoading, onTogglePaid, onDownload, o
                             <TableCell colSpan={6} className="py-4">No invoices found.</TableCell>
                         </TableRow>
                     ) : invoices.map(inv => (
-                        <TableRow key={inv.id}>
+                        <TableRow
+                            key={inv.id}
+                            className={
+                                isRectificationInvoice(inv)
+                                    ? 'bg-zinc-200 dark:bg-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-200 cursor-default'
+                                    : (inv.status === InvoiceStatus.Rectified || inv.isRectified)
+                                        ? 'bg-zinc-200 dark:bg-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-200 cursor-default'
+                                        : undefined
+                            }
+                        >
                             <TableCell className="font-medium">{inv.invoice_number}</TableCell>
                             <TableCell>{formatDate(inv.invoice_date)}</TableCell>
                             <TableCell>{inv.customer?.name || '-'}</TableCell>

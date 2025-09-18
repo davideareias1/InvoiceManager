@@ -2,11 +2,14 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Check, ChevronsUpDown } from 'lucide-react';
+import { Check, ChevronsUpDown, Unlink2, RotateCcw, Save } from 'lucide-react';
 import type { InvoiceItemsProps } from './types';
 import type { ItemForm } from './types';
+import type { ProductData } from '@/domain/models';
+import { showSuccess, showError } from '@/shared/notifications';
 
 // ===== COMPONENT =====
 
@@ -15,12 +18,21 @@ export function InvoiceItems({
     dispatch,
     allProducts,
     onApplyMonthlyHoursToItem,
+    onSaveProduct,
 }: InvoiceItemsProps) {
     const roundToStep = (value: number, step: number) => {
         if (!Number.isFinite(value)) return 0;
         return Math.round(value / step) * step;
     };
     const [openIndex, setOpenIndex] = React.useState<number | null>(null);
+    const [queryByIndex, setQueryByIndex] = React.useState<Record<number, string>>({});
+
+    const boundProductForItem = (item: ItemForm): ProductData | undefined => {
+        if (item.id) return allProducts.find(p => p.id === item.id);
+        if (item.name) return allProducts.find(p => p.name === item.name);
+        return undefined;
+    };
+
     const onSelectProduct = (index: number, productName: string) => {
         const product = allProducts.find(p => p.name === productName);
         if (product) {
@@ -28,12 +40,34 @@ export function InvoiceItems({
                 type: 'UPDATE_ITEM',
                 index,
                 payload: {
+                    id: product.id,
                     name: product.name,
                     price: Number(product.price) || 0,
                     description: product.description || ''
                 }
             });
             setOpenIndex(null);
+        }
+    };
+
+    const createProductFromItem = async (index: number, item: ItemForm) => {
+        try {
+            const saved = await onSaveProduct({ name: String(item.name || '').trim(), price: Number(item.price) || 0, description: item.description || '' });
+            dispatch({ type: 'UPDATE_ITEM', index, payload: { id: saved.id, name: saved.name, price: Number(saved.price) || 0, description: saved.description || '' } });
+            showSuccess('Product saved');
+        } catch (e) {
+            console.error(e);
+            showError('Failed to save product');
+        }
+    };
+
+    const updateBoundProductFromItem = async (index: number, item: ItemForm, product: ProductData) => {
+        try {
+            await onSaveProduct({ id: product.id, name: item.name, price: Number(item.price) || 0, description: item.description || '' });
+            showSuccess('Product updated');
+        } catch (e) {
+            console.error(e);
+            showError('Failed to update product');
         }
     };
 
@@ -73,7 +107,11 @@ export function InvoiceItems({
                                 </PopoverTrigger>
                                 <PopoverContent align="start" sideOffset={4} className="w-[520px] max-w-[95vw] p-0">
                                     <Command>
-                                        <CommandInput placeholder="Search products..." />
+                                        <CommandInput
+                                            placeholder="Search or type a new product..."
+                                            value={queryByIndex[idx] ?? ''}
+                                            onValueChange={(v: string) => setQueryByIndex(q => ({ ...q, [idx]: v }))}
+                                        />
                                         <CommandEmpty>No product found.</CommandEmpty>
                                         <CommandList className="max-h-72 overflow-auto">
                                             <CommandGroup>
@@ -113,6 +151,26 @@ export function InvoiceItems({
                                                         </div>
                                                     </CommandItem>
                                                 ))}
+                                                {(queryByIndex[idx] || '').trim() && !allProducts.some(p => p.name.toLowerCase() === (queryByIndex[idx] || '').trim().toLowerCase()) && (
+                                                    <CommandItem
+                                                        key="__use_custom__"
+                                                        value={`Add "${(queryByIndex[idx] || '').trim()}" as one-time item`}
+                                                        onSelect={() => {
+                                                            const name = (queryByIndex[idx] || '').trim();
+                                                            setOpenIndex(null);
+                                                            dispatch({ type: 'UPDATE_ITEM', index: idx, payload: { id: undefined, name, price: 0, description: '' } });
+                                                        }}
+                                                        className="py-2"
+                                                    >
+                                                        <div className="flex items-start gap-2 w-full">
+                                                            <Unlink2 className="mt-0.5 h-4 w-4" />
+                                                            <div className="flex flex-col text-left">
+                                                                <div className="font-medium leading-5">Add "{(queryByIndex[idx] || '').trim()}" as one-time item</div>
+                                                                <div className="text-xs text-neutral-500 leading-4">Use for this invoice only</div>
+                                                            </div>
+                                                        </div>
+                                                    </CommandItem>
+                                                )}
                                             </CommandGroup>
                                         </CommandList>
                                     </Command>
@@ -173,6 +231,77 @@ export function InvoiceItems({
                                 </Button>
                             </div>
                         </div>
+
+                        {(() => {
+                            const bound = boundProductForItem(it);
+                            if (!bound) return null;
+                            const priceChanged = Number(it.price) !== Number(bound.price);
+                            const descChanged = (it.description || '') !== (bound.description || '');
+                            if (!priceChanged && !descChanged) return null;
+                            return (
+                                <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2">
+                                    <div className="flex flex-wrap items-center gap-2 text-xs text-amber-900">
+                                        <span className="font-medium">Changes detected</span>
+                                        <span>for product "{bound.name}". Update product?</span>
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        <Button
+                                            type="button"
+                                            variant="secondary"
+                                            size="sm"
+                                            className="h-7 px-2 text-xs"
+                                            onClick={() => updateBoundProductFromItem(idx, it, bound)}
+                                        >
+                                            <Save className="h-3.5 w-3.5 mr-1" /> Update product
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-7 px-2 text-xs"
+                                            onClick={() => dispatch({ type: 'UPDATE_ITEM', index: idx, payload: { id: undefined } })}
+                                        >
+                                            <Unlink2 className="h-3.5 w-3.5 mr-1" /> Detach item
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-7 px-2 text-xs"
+                                            onClick={() => dispatch({ type: 'UPDATE_ITEM', index: idx, payload: { price: bound.price, description: bound.description || '' } })}
+                                        >
+                                            <RotateCcw className="h-3.5 w-3.5 mr-1" /> Revert to product
+                                        </Button>
+                                        {null}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {(() => {
+                            const bound = boundProductForItem(it);
+                            if (bound) return null;
+                            if (!it.name?.trim()) return null;
+                            return (
+                                <div className="mt-2 rounded border border-blue-200 bg-blue-50 p-2">
+                                    <div className="flex flex-wrap items-center gap-2 text-xs text-blue-900">
+                                        <span className="font-medium">One-time item</span>
+                                        <span>Save as reusable product for future invoices?</span>
+                                    </div>
+                                    <div className="mt-2">
+                                        <Button
+                                            type="button"
+                                            variant="secondary"
+                                            size="sm"
+                                            className="h-7 px-2 text-xs bg-blue-100 hover:bg-blue-200 text-blue-900"
+                                            onClick={() => createProductFromItem(idx, it)}
+                                        >
+                                            <Save className="h-3.5 w-3.5 mr-1" /> Save as product
+                                        </Button>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 ))}
             </div>

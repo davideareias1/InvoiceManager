@@ -20,6 +20,7 @@ interface InvoiceFormProps {
     totals: Totals;
     isValid: boolean;
     onApplyMonthlyHoursToItem: (index: number) => Promise<void>;
+    onSaveProduct: (product: Partial<ProductData>) => Promise<ProductData>;
     onPreview: () => void;
     
     dispatch: React.Dispatch<InvoiceFormAction>;
@@ -37,6 +38,7 @@ export function InvoiceForm({
     totals,
     isValid,
     onApplyMonthlyHoursToItem,
+    onSaveProduct,
     onPreview,
     dispatch,
     formState,
@@ -128,6 +130,7 @@ export function InvoiceForm({
                         dispatch={dispatch}
                         allProducts={allProducts}
                         onApplyMonthlyHoursToItem={onApplyMonthlyHoursToItem}
+                        onSaveProduct={onSaveProduct}
                     />
                 </div>
             </div>
