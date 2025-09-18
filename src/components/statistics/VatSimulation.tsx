@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { formatCurrency } from '@/shared/formatters';
-import { VatSimulationMetrics } from '@/application/statistics/metrics';
+import { VatSimulationMetrics } from '@/application/statistics';
 
 export function VatSimulation({ initial, onRateChange }: { initial: VatSimulationMetrics; onRateChange: (rate: number) => void }) {
     const [rate, setRate] = useState<number>(initial.rate);

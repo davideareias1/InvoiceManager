@@ -19,7 +19,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { CompanyInfo, CustomerData, Invoice, InvoiceItem, ProductData } from '@/domain/models';
 import { showSuccess, showError } from '@/shared/notifications';
 import { InvoiceForm } from '@/components/invoices/new/InvoiceForm';
-import type { InvoiceFormState, InvoiceFormAction, ItemForm } from '@/components/invoices/new/types';
+import type { InvoiceFormState, InvoiceFormAction, ItemForm, TimeLinkInfo } from '@/components/invoices/new/types';
 const PdfViewer = dynamic(() => import('@/components/PdfViewer').then(m => m.PdfViewer), { ssr: false });
 
 type Step = 'edit' | 'preview';
@@ -270,7 +270,8 @@ export default function NewInvoicePage() {
 
             // If no customer selected, create labeled empty row
             if (!matchedCustomer) {
-                dispatch({ type: 'UPDATE_ITEM', index, payload: { name: label, quantity: 0, price: 0, description: '' } });
+                const timeLink: TimeLinkInfo = { customerId: '', customerName: '', year, month };
+                dispatch({ type: 'UPDATE_ITEM', index, payload: { name: label, quantity: 0, price: 0, description: '', timeLink } });
                 return;
             }
 
@@ -289,6 +290,7 @@ export default function NewInvoicePage() {
                 quantity: hours > 0 ? hours : 0,
                 price,
                 description: `Softwareentwicklung – ${matchedCustomer.name} (Abrechnung nach Stunden)`,
+                timeLink: { customerId: matchedCustomer.id, customerName: matchedCustomer.name, year, month },
             };
             dispatch({ type: 'UPDATE_ITEM', index, payload: row });
         } catch (e) {
@@ -298,6 +300,55 @@ export default function NewInvoicePage() {
             dispatch({ type: 'UPDATE_ITEM', index, payload: { name: label, quantity: 0, price: 0 } });
         }
     };
+
+    const refreshTimeLinkedItem = async (index: number) => {
+        const it = formState.items[index];
+        const link = it?.timeLink;
+        if (!link) return;
+        try {
+            const ts = await loadTimeMonth(link.customerId || matchedCustomer?.id || '', link.customerName || matchedCustomer?.name || '', link.year, link.month);
+            const totalMinutes = ts.entries.reduce((sum, e) => sum + (e.durationMinutes || 0), 0);
+            const rawHours = Math.round((totalMinutes / 60) * 100) / 100;
+            const hours = Math.round(rawHours / 0.5) * 0.5;
+            const rate = Number(formState.hourlyRate || '0');
+            const price = Number.isFinite(rate) && rate > 0 ? rate : it.price || 0;
+            dispatch({ type: 'UPDATE_ITEM', index, payload: { quantity: hours > 0 ? hours : 0, price } });
+        } catch (err) {
+            console.warn('Failed to refresh time-linked item', err);
+        }
+    };
+
+    // Refresh time-linked items on window focus to keep hours in sync
+    useEffect(() => {
+        const onFocus = () => {
+            formState.items.forEach((it, idx) => { if (it.timeLink) refreshTimeLinkedItem(idx); });
+        };
+        window.addEventListener('focus', onFocus);
+        return () => window.removeEventListener('focus', onFocus);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [formState.items, formState.hourlyRate]);
+
+    // Auto-refresh time-linked items when invoice month/year changes
+    const invoiceMonthKey = useMemo(() => {
+        const d = new Date(formState.invoiceDate || new Date());
+        return `${d.getFullYear()}-${d.getMonth() + 1}`;
+    }, [formState.invoiceDate]);
+
+    useEffect(() => {
+        const d = new Date(formState.invoiceDate || new Date());
+        const year = d.getFullYear();
+        const month = d.getMonth() + 1;
+        formState.items.forEach((it, idx) => {
+            if (!it.timeLink) return;
+            if (it.timeLink.year !== year || it.timeLink.month !== month) {
+                dispatch({ type: 'UPDATE_ITEM', index: idx, payload: { timeLink: { ...it.timeLink, year, month }, name: `Hours ${d.toLocaleString(undefined, { month: 'long', year: 'numeric' })}` } });
+                setTimeout(() => refreshTimeLinkedItem(idx), 0);
+            } else {
+                refreshTimeLinkedItem(idx);
+            }
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [invoiceMonthKey]);
 
     useEffect(() => {
         return () => {
@@ -340,6 +391,7 @@ export default function NewInvoicePage() {
                         totals={computedTotals}
                         isValid={isValid}
                         onApplyMonthlyHoursToItem={applyMonthlyHoursToItem}
+                        onRefreshTimeLinkedItem={refreshTimeLinkedItem}
                         onSaveProduct={async (p) => {
                             const saved = await persistProduct(p);
                             // Refresh local list optimistically

@@ -1,6 +1,6 @@
 "use client";
 
-import { ClientTotalItem } from '@/application/statistics/metrics';
+import { ClientTotalItem } from '@/application/statistics';
 import { formatCurrency } from '@/shared/formatters';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 

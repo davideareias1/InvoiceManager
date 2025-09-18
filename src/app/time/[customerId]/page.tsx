@@ -94,7 +94,7 @@ function TimeTable({ customer }: { customer: CustomerData }) {
                         const dateISO = format(date, 'yyyy-MM-dd');
                         const entry = timesheet?.entries.find(e => e.date === dateISO);
                         return (
-                            <div key={dateISO} className="grid grid-cols-12 gap-2 items-center">
+                            <div key={`${dateISO}-${entry?.start || ''}-${entry?.pauseMinutes ?? ''}-${entry?.end || ''}-${entry?.notes || ''}`} className="grid grid-cols-12 gap-2 items-center">
                                 <div className="col-span-2 text-sm">{format(date, 'dd.MM.yyyy (EEE)')}</div>
                                 <Input defaultValue={entry?.start || ''} onBlur={(e) => addOrUpdate(dateISO, e.target.value || undefined, entry?.pauseMinutes, entry?.end, entry?.notes)} placeholder="HH:mm" />
                                 <Input type="number" defaultValue={typeof entry?.pauseMinutes === 'number' ? String(entry?.pauseMinutes) : ''} onBlur={(e) => addOrUpdate(dateISO, entry?.start, e.target.value ? Number(e.target.value) : undefined, entry?.end, entry?.notes)} placeholder="0" />

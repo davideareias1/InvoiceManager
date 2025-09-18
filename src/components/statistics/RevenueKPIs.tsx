@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCurrency } from '@/shared/formatters';
-import { RevenueMetrics } from '@/application/statistics/metrics';
+import { RevenueMetrics } from '@/application/statistics';
 import { CalendarDays, TrendingUp, Wallet } from 'lucide-react';
 
 function StatCard({

@@ -8,9 +8,12 @@ let cachedSettings: PersonalTaxSettings | null = null;
 export const DEFAULT_TAX_SETTINGS: PersonalTaxSettings = {
     id: 'personal_tax_settings',
     churchTaxRatePercent: 0,
+    isChurchMember: false,
+    federalState: undefined,
     annualDeductibleExpenses: 0,
     prepaymentsYearToDate: 0,
     jointAssessment: false,
+    partnerTaxableAnnualProjection: 0,
     lastModified: new Date().toISOString(),
 };
 
@@ -18,7 +21,8 @@ export async function loadPersonalTaxSettings(): Promise<PersonalTaxSettings | n
     if (cachedSettings) return cachedSettings;
     const file = await loadPersonalTaxSettingsFromFile();
     if (!file) return null;
-    cachedSettings = file as PersonalTaxSettings;
+    // Merge with defaults to ensure new fields exist
+    cachedSettings = { ...DEFAULT_TAX_SETTINGS, ...(file as PersonalTaxSettings) };
     return cachedSettings;
 }
 

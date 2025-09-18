@@ -49,6 +49,20 @@ export function TimeTrackingProvider({ children }: ProviderProps) {
         if (!timesheet) return;
         setIsSaving(true);
         try {
+            const isEffectivelyEmpty = (
+                (!entry.start || entry.start.trim() === '') &&
+                (!entry.end || entry.end.trim() === '') &&
+                (typeof entry.pauseMinutes !== 'number' || Number.isNaN(entry.pauseMinutes)) &&
+                (!entry.notes || entry.notes.trim() === '')
+            );
+
+            if (isEffectivelyEmpty) {
+                const ts = await repo.deleteEntry(timesheet.customerId, timesheet.customerName, timesheet.year, timesheet.month, entry.date);
+                setTimesheet(ts);
+                setStats(computeStats(ts, hourlyRate));
+                return;
+            }
+
             const newEntry: TimeEntry = {
                 id: entry.id || crypto.randomUUID(),
                 date: entry.date,

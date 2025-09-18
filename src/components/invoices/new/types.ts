@@ -1,11 +1,19 @@
 import type { CustomerData, ProductData } from '@/domain/models';
 
+export interface TimeLinkInfo {
+    customerId: string;
+    customerName: string;
+    year: number;
+    month: number;
+}
+
 export interface ItemForm {
     id?: string;
     name: string;
     quantity: number;
     price: number;
     description?: string;
+    timeLink?: TimeLinkInfo; // When present, this row represents monthly hours for a given month
 }
 
 export interface InvoiceFormState {
@@ -46,6 +54,7 @@ export interface InvoiceItemsProps {
     allProducts: ProductData[];
     onApplyMonthlyHoursToItem: (index: number) => Promise<void>;
     onSaveProduct: (product: Partial<ProductData>) => Promise<ProductData>;
+    onRefreshTimeLinkedItem?: (index: number) => void;
 }
 
 export interface InvoiceSidebarProps {

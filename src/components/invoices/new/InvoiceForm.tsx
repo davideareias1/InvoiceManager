@@ -25,6 +25,7 @@ interface InvoiceFormProps {
     
     dispatch: React.Dispatch<InvoiceFormAction>;
     formState: InvoiceFormState;
+    onRefreshTimeLinkedItem?: (index: number) => void;
 }
 
 // ===== COMPONENT =====
@@ -42,6 +43,7 @@ export function InvoiceForm({
     onPreview,
     dispatch,
     formState,
+    onRefreshTimeLinkedItem,
 }: InvoiceFormProps) {
 
     const [customerOpen, setCustomerOpen] = React.useState(false);
@@ -131,6 +133,7 @@ export function InvoiceForm({
                         allProducts={allProducts}
                         onApplyMonthlyHoursToItem={onApplyMonthlyHoursToItem}
                         onSaveProduct={onSaveProduct}
+                        onRefreshTimeLinkedItem={onRefreshTimeLinkedItem}
                     />
                 </div>
             </div>

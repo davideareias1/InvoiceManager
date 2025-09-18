@@ -10,7 +10,7 @@ import { Invoice } from '@/domain/models';
 // removed KPIs and table per user request
 import { TopClients } from '@/components/statistics/TopClients';
 import { VatSimulation } from '@/components/statistics/VatSimulation';
-import { computeBasicMetrics, computeRevenueMetrics, computeVatSimulation, estimateIncomeTaxes, extractInvoiceYears, computeMonthlyTotalsForYear, computeRevenueMetricsForYear } from '@/application/statistics/metrics';
+import { computeBasicMetrics, computeRevenueMetrics, computeVatSimulation, estimateIncomeTaxes, extractInvoiceYears, computeMonthlyTotalsForYear, computeRevenueMetricsForYear } from '@/application/statistics';
 import { IncomeTaxes } from '@/components/statistics/IncomeTaxes';
 import { MonthlyChart } from '@/components/statistics/MonthlyChart';
 // removed side RevenueKPIs; KPIs are now inline in the chart header

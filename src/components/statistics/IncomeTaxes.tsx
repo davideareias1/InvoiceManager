@@ -1,17 +1,10 @@
 "use client";
 
-import { formatCurrency } from '@/shared/formatters';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b'];
-const PROJECTED_COLORS = ['#93c5fd', '#86efac', '#fbbf24']; // Lighter versions for projected
+const TAX_COLOR = '#f59e0b';
 const REMAINDER_COLOR = '#E5E7EB';
 const PREPAYMENT_COLOR = '#8b5cf6';
-
-function truncateLabel(label: string, max: number = 25): string {
-    if (!label) return '';
-    return label.length <= max ? label : label.slice(0, max - 1) + '…';
-}
 
 export function IncomeTaxes({
     baseYTD,
@@ -20,12 +13,12 @@ export function IncomeTaxes({
     soli,
     prepayments,
     centerTotal,
-    incomeTaxCurrent,
-    incomeTaxProjected,
-    churchTaxCurrent,
-    churchTaxProjected,
-    solidaritySurchargeCurrent,
-    solidaritySurchargeProjected,
+    incomeTaxCurrent: _incomeTaxCurrent,
+    incomeTaxProjected: _incomeTaxProjected,
+    churchTaxCurrent: _churchTaxCurrent,
+    churchTaxProjected: _churchTaxProjected,
+    solidaritySurchargeCurrent: _solidaritySurchargeCurrent,
+    solidaritySurchargeProjected: _solidaritySurchargeProjected,
 }: {
     baseYTD: number;
     incomeTax: number;
@@ -40,28 +33,17 @@ export function IncomeTaxes({
     solidaritySurchargeCurrent: number;
     solidaritySurchargeProjected: number;
 }) {
-    const taxItems: Array<{ name: string; value: number; isPrepayment?: boolean; isProjected?: boolean }> = [];
-    
-    // Add current taxes (based on YTD)
-    if (incomeTaxCurrent > 0) taxItems.push({ name: 'Tax Current', value: incomeTaxCurrent });
-    if (churchTaxCurrent > 0) taxItems.push({ name: 'Church Current', value: churchTaxCurrent });
-    if (solidaritySurchargeCurrent > 0) taxItems.push({ name: 'Solidarity Current', value: solidaritySurchargeCurrent });
-    
-    // Add projected taxes (remaining for the year)
-    if (incomeTaxProjected > 0) taxItems.push({ name: 'Tax Projected', value: incomeTaxProjected, isProjected: true });
-    if (churchTaxProjected > 0) taxItems.push({ name: 'Church Projected', value: churchTaxProjected, isProjected: true });
-    if (solidaritySurchargeProjected > 0) taxItems.push({ name: 'Solidarity Projected', value: solidaritySurchargeProjected, isProjected: true });
-
-    // Add prepayments if they exist
-    if (prepayments > 0) {
-        taxItems.push({ name: 'Prepaid', value: prepayments, isPrepayment: true });
-    }
-
-    const totalTax = incomeTax + churchTax + soli;
-    // Use centerTotal (gross projected revenue) as the base for calculating remainder
+    // Build simplified donut: Prepaid + Taxes Remaining + Kept
+    const totalTax = Math.max(0, incomeTax + churchTax + soli);
     const grossRevenue = typeof centerTotal === 'number' ? centerTotal : baseYTD;
-    const remainder = Math.max(0, grossRevenue - totalTax);
-    const data: Array<{ name: string; value: number; isRemainder?: boolean; isPrepayment?: boolean; isProjected?: boolean }> = remainder > 0 ? [...taxItems, { name: 'Kept', value: remainder, isRemainder: true }] : taxItems;
+    const prepaid = Math.max(0, prepayments);
+    const taxesRemaining = Math.max(0, totalTax - prepaid);
+    const kept = Math.max(0, grossRevenue - totalTax);
+
+    const data: Array<{ name: string; value: number; isRemainder?: boolean; isPrepayment?: boolean; isTaxes?: boolean }> = [];
+    if (prepaid > 0) data.push({ name: 'Prepaid', value: prepaid, isPrepayment: true });
+    if (taxesRemaining > 0) data.push({ name: 'Taxes Remaining', value: taxesRemaining, isTaxes: true });
+    if (kept > 0) data.push({ name: 'Kept', value: kept, isRemainder: true });
 
     return (
         <div className="w-full flex flex-col items-center select-none">
@@ -95,7 +77,7 @@ export function IncomeTaxes({
                                 const pct = Math.round(((percent || 0) * 100));
                                 const displayName = payload?.isRemainder ? 'Kept' : 
                                                    payload?.isPrepayment ? 'Prepaid' : 
-                                                   name; // Keep full names like "Tax Current", "Tax Projected"
+                                                   payload?.isTaxes ? 'Taxes Remaining' : name;
                                 const valueFormatted = new Intl.NumberFormat('de-DE', { 
                                     style: 'currency', 
                                     currency: 'EUR', 
@@ -117,20 +99,11 @@ export function IncomeTaxes({
                             }}
                         >
                             {data.map((entry: any, index: number) => {
-                                let color: string;
-                                if (entry.isRemainder) {
-                                    color = REMAINDER_COLOR;
-                                } else if (entry.isPrepayment) {
-                                    color = PREPAYMENT_COLOR;
-                                } else if (entry.isProjected) {
-                                    // Use lighter colors for projected items
-                                    const colorIndex = Math.floor(index / 2); // Group current/projected pairs
-                                    color = PROJECTED_COLORS[colorIndex % PROJECTED_COLORS.length];
-                                } else {
-                                    // Use regular colors for current items
-                                    const colorIndex = Math.floor(index / 2); // Group current/projected pairs
-                                    color = COLORS[colorIndex % COLORS.length];
-                                }
+                                const color = entry.isRemainder
+                                    ? REMAINDER_COLOR
+                                    : entry.isPrepayment
+                                        ? PREPAYMENT_COLOR
+                                        : TAX_COLOR;
                                 return (
                                     <Cell key={`cell-${index}`} fill={color} />
                                 );

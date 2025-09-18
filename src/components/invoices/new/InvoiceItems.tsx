@@ -19,6 +19,7 @@ export function InvoiceItems({
     allProducts,
     onApplyMonthlyHoursToItem,
     onSaveProduct,
+    onRefreshTimeLinkedItem,
 }: InvoiceItemsProps) {
     const roundToStep = (value: number, step: number) => {
         if (!Number.isFinite(value)) return 0;
@@ -88,7 +89,7 @@ export function InvoiceItems({
 
             <div className="flex-1 min-h-0 overflow-auto space-y-2 pr-2">
                 {formState.items.map((it, idx) => (
-                    <div key={idx} className="border border-neutral-200 rounded-md p-3 bg-neutral-50">
+                    <div key={`${idx}-${it.name}-${it.quantity}-${it.price}-${it.timeLink ? `${it.timeLink.customerId}-${it.timeLink.year}-${it.timeLink.month}` : ''}`} className="border border-neutral-200 rounded-md p-3 bg-neutral-50">
                         {/* Product Selection Row */}
                         <div className="mb-2">
                             <Popover open={openIndex === idx} onOpenChange={(o) => setOpenIndex(o ? idx : null)}>
@@ -231,6 +232,27 @@ export function InvoiceItems({
                                 </Button>
                             </div>
                         </div>
+
+                        {/* Time link badge and refresh */}
+                        {it.timeLink && (
+                            <div className="mt-2 flex items-center justify-between text-xs">
+                                <div className="text-neutral-600">
+                                    Linked to time: {it.timeLink.customerName || '—'} {it.timeLink.year}-{String(it.timeLink.month).padStart(2, '0')}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs"
+                                        onClick={() => onRefreshTimeLinkedItem?.(idx)}
+                                    >
+                                        Refresh hours
+                                    </Button>
+                                    <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs"
+                                        onClick={() => dispatch({ type: 'UPDATE_ITEM', index: idx, payload: { timeLink: undefined } })}
+                                    >
+                                        Unlink
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
 
                         {(() => {
                             const bound = boundProductForItem(it);

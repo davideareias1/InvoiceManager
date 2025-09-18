@@ -184,10 +184,13 @@ export interface TimeTrackingRepository {
 // Personal tax settings for German income tax, church tax, solidarity surcharge
 export interface PersonalTaxSettings {
     id: string; // constant id like 'personal_tax_settings'
-    churchTaxRatePercent: number; // 0, 8, or 9
+    churchTaxRatePercent: number; // 0, 8, or 9 (can be overridden manually)
+    isChurchMember?: boolean; // whether church tax applies
+    federalState?: 'BW' | 'BY' | 'BE' | 'BB' | 'HB' | 'HH' | 'HE' | 'MV' | 'NI' | 'NW' | 'RP' | 'SL' | 'SN' | 'ST' | 'SH' | 'TH'; // Bundesland for church tax rate
     annualDeductibleExpenses: number; // EUR per year
     prepaymentsYearToDate: number; // EUR paid to tax office YTD
     jointAssessment: boolean; // Married joint assessment (splitting tariff approximation)
+    partnerTaxableAnnualProjection?: number; // EUR projected taxable income for partner (for splitting)
     lastModified: string;
 }
 
