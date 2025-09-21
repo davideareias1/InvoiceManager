@@ -52,6 +52,7 @@ function TimeTable({ customer }: { customer: CustomerData }) {
     const now = new Date();
     const [ym, setYm] = useState<{ year: number; month: number }>({ year: now.getFullYear(), month: now.getMonth() + 1 });
     const [options, setOptions] = useState<Array<{ year: number; month: number }>>([]);
+    const [createStatus, setCreateStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
     useEffect(() => {
         if (!isInitialized || !hasPermission) return;
@@ -200,10 +201,33 @@ function TimeTable({ customer }: { customer: CustomerData }) {
             <div className="flex items-center justify-between gap-3">
                 <div className="text-xl font-medium">{customer.name}</div>
                 <div className="flex items-center gap-2">
-                    <MonthSelector value={ym} onChange={setYm} options={options} />
-                    <Button variant="outline" onClick={() => createMonth(customer.id, customer.name, ym.year, ym.month, customer.hourlyRate).then(() => listAvailableMonths(customer.id, customer.name).then(setOptions).catch(() => {}))} disabled={isSaving}>
-                        Create file
+                    <MonthSelector value={ym} onChange={(v) => { setYm(v); setCreateStatus('idle'); }} options={options} />
+                    <Button
+                        variant="outline"
+                        onClick={async () => {
+                            setCreateStatus('idle');
+                            try {
+                                await createMonth(customer.id, customer.name, ym.year, ym.month, customer.hourlyRate);
+                                await listAvailableMonths(customer.id, customer.name).then(setOptions).catch(() => {});
+                                setCreateStatus('success');
+                                setTimeout(() => setCreateStatus('idle'), 2500);
+                            } catch (e) {
+                                console.error(e);
+                                setCreateStatus('error');
+                                setTimeout(() => setCreateStatus('idle'), 3000);
+                            }
+                        }}
+                        disabled={isSaving}
+                        title="Create the timesheet file on disk for this month"
+                    >
+                        {isSaving ? 'Creating…' : 'Create file'}
                     </Button>
+                    {createStatus === 'success' && (
+                        <span className="text-xs text-green-600">Created</span>
+                    )}
+                    {createStatus === 'error' && (
+                        <span className="text-xs text-red-600">Failed</span>
+                    )}
                 </div>
             </div>
             <Card>
