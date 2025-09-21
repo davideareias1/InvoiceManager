@@ -8,6 +8,7 @@ import type { CustomerData } from '@/domain/models';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TimeTrackingProvider, useTimeTracking } from '@/infrastructure/contexts/TimeTrackingContext';
+import BulkPaste from '@/components/time/BulkPaste';
 import { useFileSystem } from '@/infrastructure/contexts/FileSystemContext';
 import { format } from 'date-fns';
 import { getSavedDirectoryHandle } from '@/infrastructure/filesystem/fileSystemStorage';
@@ -76,6 +77,14 @@ function TimeTable({ customer }: { customer: CustomerData }) {
             </div>
             <Card>
                 <CardHeader>
+                    <CardTitle>Bulk paste</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <BulkPaste />
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
                     <CardTitle>Timesheet {ym.year}-{String(ym.month).padStart(2, '0')}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -114,6 +123,11 @@ function TimeTable({ customer }: { customer: CustomerData }) {
                     <div>Average monthly (YTD): {Math.round((stats?.averageMonthlyMinutesThisYear || 0) / 60)} h</div>
                     {typeof stats?.totalRevenueThisMonth === 'number' && (
                         <div>Revenue estimate this month: € {stats!.totalRevenueThisMonth}</div>
+                    )}
+                    {timesheet && (
+                        <div className="mt-2 text-neutral-600">
+                            Sum: {Math.floor((timesheet.entries.reduce((s, e) => s + (e.durationMinutes || 0), 0)) / 60)}h {((timesheet.entries.reduce((s, e) => s + (e.durationMinutes || 0), 0)) % 60)}m
+                        </div>
                     )}
                 </CardContent>
             </Card>
