@@ -14,6 +14,7 @@ interface TimeTrackingContextType {
     upsertEntry: (entry: Omit<TimeEntry, 'durationMinutes' | 'id'> & { id?: string }) => Promise<void>;
     deleteEntry: (dateISO: string) => Promise<void>;
     listAvailableMonths: (customerId: string, customerName: string) => Promise<Array<{ year: number; month: number }>>;
+    createMonth: (customerId: string, customerName: string, year: number, month: number, hourlyRate?: number) => Promise<void>;
 }
 
 const TimeTrackingContext = createContext<TimeTrackingContextType | undefined>(undefined);
@@ -96,6 +97,20 @@ export function TimeTrackingProvider({ children }: ProviderProps) {
         return repo.listAvailableMonths(customerId, customerName);
     }, []);
 
+    const createMonth = useCallback(async (customerId: string, customerName: string, year: number, month: number, rate?: number) => {
+        setIsSaving(true);
+        try {
+            setHourlyRate(rate);
+            // Load current state (creates empty in-memory if not present), then save to ensure file exists
+            const ts = await repo.loadMonth(customerId, customerName, year, month);
+            const saved = await repo.saveMonth(ts);
+            setTimesheet(saved);
+            setStats(computeStats(saved, rate));
+        } finally {
+            setIsSaving(false);
+        }
+    }, []);
+
     const value = useMemo(() => ({
         isSaving,
         isLoading,
@@ -105,7 +120,8 @@ export function TimeTrackingProvider({ children }: ProviderProps) {
         upsertEntry: upsert,
         deleteEntry: remove,
         listAvailableMonths,
-    }), [isSaving, isLoading, timesheet, stats, loadMonth, upsert, remove, listAvailableMonths]);
+        createMonth,
+    }), [isSaving, isLoading, timesheet, stats, loadMonth, upsert, remove, listAvailableMonths, createMonth]);
 
     return (
         <TimeTrackingContext.Provider value={value}>

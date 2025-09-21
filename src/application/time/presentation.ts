@@ -42,7 +42,7 @@ export interface ParsedBulkLine {
     notes?: string;
 }
 
-function normalizeTime(input: string): string | null {
+export function normalizeTime(input: string): string | null {
     const cleaned = input.replace(/\./g, ':').trim();
     const m = cleaned.match(/^(\d{1,2})\s*[:](\d{1,2})$/);
     if (!m) return null;
@@ -53,7 +53,7 @@ function normalizeTime(input: string): string | null {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
-function parsePauseToMinutes(token: string | undefined): number | undefined {
+export function parsePauseToMinutes(token: string | undefined): number | undefined {
     if (!token) return undefined;
     const t = token.trim();
     if (!t) return undefined;
@@ -156,6 +156,81 @@ export function parseBulkTimeTextToMonth(
                 end: endCandidate,
                 pauseMinutes,
                 notes: notes || undefined,
+            }
+        });
+    }
+    return result;
+}
+
+/**
+ * Same as parseBulkTimeTextToMonth, but starts mapping from a specific day index.
+ * startDay is 1-based (1..daysInMonth).
+ */
+export function parseBulkTimeTextFromDay(
+    rawText: string,
+    year: number,
+    month: number,
+    startDay: number
+): Array<{ date: string; parsed: ParsedBulkLine }> {
+    const text = rawText.replace(/\r\n/g, '\n');
+    const lines = text.split('\n');
+    const totalDays = new Date(year, month, 0).getDate();
+    const result: Array<{ date: string; parsed: ParsedBulkLine }> = [];
+    let day = Math.max(1, Math.min(totalDays, startDay));
+    for (let idx = 0; idx < lines.length && day <= totalDays; idx++, day++) {
+        const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const line = lines[idx] ?? '';
+        const trimmed = line.trim();
+        if (!trimmed) {
+            result.push({ date, parsed: { isEmpty: true } });
+            continue;
+        }
+
+        const tokens = trimmed.split(/\s+/).filter(Boolean);
+        // Identify first and last time-like tokens as start/end
+        let startIdx = -1;
+        let endIdx = -1;
+        for (let i = 0; i < tokens.length; i++) {
+            if (normalizeTime(tokens[i])) { startIdx = i; break; }
+        }
+        for (let j = tokens.length - 1; j >= 0; j--) {
+            if (normalizeTime(tokens[j])) { endIdx = j; break; }
+        }
+        const startCandidate = startIdx >= 0 ? normalizeTime(tokens[startIdx]) : null;
+        const endCandidate = endIdx >= 0 && endIdx > startIdx ? normalizeTime(tokens[endIdx]) : null;
+
+        if (!startCandidate || !endCandidate) {
+            result.push({ date, parsed: { isEmpty: true } });
+            continue;
+        }
+
+        let pauseMinutes: number | undefined = undefined;
+        let notes: string | undefined = undefined;
+        if (endIdx - startIdx === 1) {
+            pauseMinutes = 0;
+        } else if (endIdx - startIdx >= 2) {
+            const middleTokens = tokens.slice(startIdx + 1, endIdx);
+            const maybePause = parsePauseToMinutes(middleTokens[0]);
+            if (typeof maybePause === 'number') {
+                pauseMinutes = maybePause;
+                if (middleTokens.length > 1) notes = middleTokens.slice(1).join(' ');
+            } else {
+                pauseMinutes = 0;
+                notes = middleTokens.join(' ');
+            }
+        }
+
+        const trailing = endIdx + 1 < tokens.length ? tokens.slice(endIdx + 1).join(' ') : '';
+        notes = [notes, trailing].filter(Boolean).join(' ').trim() || undefined;
+
+        result.push({
+            date,
+            parsed: {
+                isEmpty: false,
+                start: startCandidate,
+                end: endCandidate,
+                pauseMinutes,
+                notes,
             }
         });
     }
