@@ -26,15 +26,28 @@ function MonthSelector({ value, onChange, options }: { value: { year: number; mo
         if (!set.has(current)) set.add(current);
         return Array.from(set).sort((a, b) => b.localeCompare(a));
     }, [options, current]);
+    const monthInputValue = current; // yyyy-MM
     return (
-        <Select value={current} onValueChange={handle}>
-            <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-                {unique.map(k => (
-                    <SelectItem key={k} value={k}>{k}</SelectItem>
-                ))}
-            </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+            <Select value={current} onValueChange={handle}>
+                <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                    {unique.map(k => (
+                        <SelectItem key={k} value={k}>{k}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+            <Input
+                type="month"
+                value={monthInputValue}
+                onChange={(e) => {
+                    const val = e.target.value; // yyyy-MM
+                    const [y, m] = val.split('-').map(Number);
+                    if (!Number.isNaN(y) && !Number.isNaN(m)) onChange({ year: y, month: m });
+                }}
+                className="w-[160px]"
+            />
+        </div>
     );
 }
 
