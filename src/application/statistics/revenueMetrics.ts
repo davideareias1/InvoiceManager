@@ -22,6 +22,18 @@ function dayOfYear(date: Date): number {
     return Math.floor(diff / oneDay);
 }
 
+function startOfDay(date: Date): Date {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function daysBetweenInclusive(start: Date, end: Date): number {
+    const startUTC = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+    const endUTC = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+    if (endUTC < startUTC) return 0;
+    const oneDay = 1000 * 60 * 60 * 24;
+    return Math.floor((endUTC - startUTC) / oneDay) + 1;
+}
+
 function calculateInvoiceNet(invoice: Invoice): number {
     const items = Array.isArray(invoice.items) ? invoice.items : [];
     return items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
@@ -58,8 +70,12 @@ export function computeRevenueMetrics(
     const monthsElapsed = Math.max(1, currentMonth - firstInvoiceMonthInYear + 1);
     const averageMonthly = totalYTD / monthsElapsed;
     
-    const dayOfYearNow = dayOfYear(now);
-    const projectedAnnual = dayOfYearNow > 0 ? (totalYTD / dayOfYearNow) * 365 : 0;
+    // Project from the first month with earnings; ignore months before earnings started
+    const periodStart = startOfDay(firstDate);
+    const periodEnd = new Date(year, 11, 31);
+    const daysElapsed = Math.max(1, daysBetweenInclusive(periodStart, startOfDay(now)));
+    const daysInPeriod = Math.max(daysElapsed, daysBetweenInclusive(periodStart, periodEnd));
+    const projectedAnnual = (totalYTD / daysElapsed) * daysInPeriod;
 
     return { averageMonthly, projectedAnnual, totalYTD };
 }
@@ -105,8 +121,12 @@ export function computeRevenueMetricsForYear(
     const currentMonth = now.getMonth();
     const monthsElapsed = Math.max(1, currentMonth - firstInvoiceMonthInYear + 1);
     const averageMonthly = totalYTD / monthsElapsed;
-    const dayOfYearNow = dayOfYear(now);
-    const projectedAnnual = dayOfYearNow > 0 ? (totalYTD / dayOfYearNow) * 365 : 0;
+    // Project from the first month with earnings; ignore months before earnings started
+    const periodStart = startOfDay(firstDate);
+    const periodEnd = new Date(year, 11, 31);
+    const daysElapsed = Math.max(1, daysBetweenInclusive(periodStart, startOfDay(now)));
+    const daysInPeriod = Math.max(daysElapsed, daysBetweenInclusive(periodStart, periodEnd));
+    const projectedAnnual = (totalYTD / daysElapsed) * daysInPeriod;
 
     return { averageMonthly, projectedAnnual, totalYTD };
 }

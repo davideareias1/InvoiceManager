@@ -28,11 +28,8 @@ function MonthlyTooltipContent(props: any) {
     const { active, payload, label, className } = props || {};
     if (!active || !payload?.length) return null;
 
-    const now = new Date();
-    const currentLabel = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-    const filtered = payload.filter((item: any) => !(item?.dataKey === 'projection' && label === currentLabel));
-    if (!filtered.length) return null;
+    const filtered = payload;
+    if (!filtered?.length) return null;
 
     return (
         <div
