@@ -144,7 +144,7 @@ function computeDurationMinutes(start?: string, end?: string, pauseMinutes?: num
     const [eh, em] = end.split(':').map(Number);
     if ([sh, sm, eh, em].some(v => Number.isNaN(v))) return 0;
     const startMin = sh * 60 + sm;
-    const endMin = eh * 60 + em;
+    const endMin = (eh === 24 && em === 0) ? 24 * 60 : eh * 60 + em;
     const raw = Math.max(0, endMin - startMin);
     return Math.max(0, raw - (pauseMinutes || 0));
 }

@@ -6,7 +6,8 @@ export function calculateDurationMinutes(start?: string, end?: string, pauseMinu
     const [eh, em] = end.split(':').map(Number);
     if ([sh, sm, eh, em].some(v => Number.isNaN(v))) return 0;
     const startMin = sh * 60 + sm;
-    const endMin = eh * 60 + em;
+    // Allow 24:00 as 1440 minutes
+    const endMin = (eh === 24 && em === 0) ? 24 * 60 : eh * 60 + em;
     const raw = Math.max(0, endMin - startMin);
     return Math.max(0, raw - (pauseMinutes || 0));
 }
@@ -49,6 +50,8 @@ export function normalizeTime(input: string): string | null {
     const hours = Number(m[1]);
     const minutes = Number(m[2]);
     if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+    // Allow 24:00 as a valid end-of-day time
+    if (hours === 24 && minutes === 0) return '24:00';
     if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
@@ -64,7 +67,15 @@ export function parsePauseToMinutes(token: string | undefined): number | undefin
         const h = Number(mm[1]);
         const m = Number(mm[2]);
         if ([h, m].some(v => Number.isNaN(v))) return undefined;
+        if (m < 0 || m > 59) return undefined;
         return Math.max(0, h * 60 + m);
+    }
+    // Support shorthand like ":30" meaning 30 minutes
+    const leading = colonLike.match(/^:\s*(\d{1,2})$/);
+    if (leading) {
+        const m = Number(leading[1]);
+        if (Number.isNaN(m) || m < 0 || m > 59) return undefined;
+        return m;
     }
     const onlyNum = t.match(/^\d{1,4}$/);
     if (onlyNum) {
