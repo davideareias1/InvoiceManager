@@ -124,4 +124,84 @@ export function computeAvailablePeriods(index: CustomerTimeIndex[]): { years: nu
     };
 }
 
+// ===== TIME-BASED REVENUE ESTIMATION =====
+/**
+ * Estimate realized revenue from tracked time for each month of a given year.
+ * Uses each customer's hourlyRate when available. Returns a map keyed by 'YYYY-MM'.
+ */
+export function estimateTimeBasedRevenueByMonth(
+    index: CustomerTimeIndex[],
+    year: number,
+): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (let m = 1; m <= 12; m++) {
+        const key = `${year}-${String(m).padStart(2, '0')}`;
+        let sum = 0;
+        for (const ci of index) {
+            const minutes = ci.perMonthMinutes[key] || 0;
+            const hourlyRate = typeof ci.hourlyRate === 'number' ? ci.hourlyRate : 0;
+            if (minutes > 0 && hourlyRate > 0) {
+                sum += (minutes / 60) * hourlyRate;
+            }
+        }
+        result[key] = Math.round(sum * 100) / 100; // cents precision
+    }
+    return result;
+}
+
+function computeRecentAverage(values: number[], maxCount: number): number {
+    const nonZero = values.filter(v => v > 0);
+    if (nonZero.length === 0) return 0;
+    const last = nonZero.slice(-maxCount);
+    const avg = last.reduce((s, v) => s + v, 0) / last.length;
+    return Math.round(avg * 100) / 100;
+}
+
+/**
+ * Compute monthly projection values using tracked time and hourly rates.
+ * - For the current month: scale realized time-revenue by elapsed month fraction.
+ * - For future months (in the current year): use the recent average (up to 3 months) of time-revenue.
+ * - Past months and non-current years return null.
+ */
+export function computeTimeBasedMonthlyProjections(
+    index: CustomerTimeIndex[],
+    year: number,
+    now: Date = new Date(),
+): Record<string, number | null> {
+    const projections: Record<string, number | null> = {};
+    const currentYear = now.getFullYear();
+
+    // Default to nulls
+    for (let m = 1; m <= 12; m++) {
+        const key = `${year}-${String(m).padStart(2, '0')}`;
+        projections[key] = null;
+    }
+
+    if (year !== currentYear) return projections;
+
+    const currentMonthIndex = now.getMonth(); // 0-11
+    const daysTotal = daysInMonth(year, currentMonthIndex + 1);
+    const dayOfMonth = now.getDate();
+    const elapsedFraction = Math.min(1, Math.max(0.05, dayOfMonth / daysTotal));
+
+    const realizedByMonth = estimateTimeBasedRevenueByMonth(index, year);
+    const realizedValuesBeforeCurrent = Array.from({ length: currentMonthIndex }, (_, i) => realizedByMonth[`${year}-${String(i + 1).padStart(2, '0')}`] || 0);
+    const recentAvg = computeRecentAverage(realizedValuesBeforeCurrent, 3);
+
+    // Current month projection
+    const currentKey = `${year}-${String(currentMonthIndex + 1).padStart(2, '0')}`;
+    const realizedCurrent = realizedByMonth[currentKey] || 0;
+    const projectedCurrent = realizedCurrent > 0 ? Math.round((realizedCurrent / elapsedFraction) * 100) / 100 : 0;
+    projections[currentKey] = projectedCurrent > 0 ? projectedCurrent : (recentAvg > 0 ? recentAvg : null);
+
+    // Future months projection baseline
+    const baseline = recentAvg > 0 ? recentAvg : 0;
+    for (let m = currentMonthIndex + 2; m <= 12; m++) { // months strictly after current
+        const key = `${year}-${String(m).padStart(2, '0')}`;
+        projections[key] = baseline > 0 ? baseline : null;
+    }
+
+    return projections;
+}
+
 

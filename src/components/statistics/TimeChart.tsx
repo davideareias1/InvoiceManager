@@ -23,6 +23,20 @@ import {
 import { formatCurrencyNoCents } from '@/shared/formatters'
 import { TimeChartPrepared, TimeViewMode } from '@/application/time/analytics'
 
+// Fixed palette for time series lines
+const SERIES_COLORS = [
+    '#3b82f6', // blue
+    '#10b981', // emerald
+    '#f59e0b', // amber
+    '#ef4444', // red
+    '#a855f7', // violet
+    '#06b6d4', // cyan
+    '#84cc16', // lime
+    '#f97316', // orange
+    '#64748b', // slate
+    '#0ea5e9', // sky
+]
+
 export function TimeChart({
     prepared,
     viewMode,
@@ -104,7 +118,7 @@ export function TimeChart({
                                     key={name}
                                     dataKey={name}
                                     type="monotone"
-                                    stroke={`var(--chart-color-${idx % 10}, #${(idx * 997) % 0xffffff})`}
+                                    stroke={SERIES_COLORS[idx % SERIES_COLORS.length]}
                                     strokeWidth={2}
                                     dot={false}
                                     connectNulls

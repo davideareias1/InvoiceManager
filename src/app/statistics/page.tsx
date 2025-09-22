@@ -15,7 +15,7 @@ import { IncomeTaxes } from '@/components/statistics/IncomeTaxes';
 import { MonthlyChart } from '@/components/statistics/MonthlyChart';
 // removed side RevenueKPIs; KPIs are now inline in the chart header
 import { useTimeAnalytics } from '@/infrastructure/contexts/TimeAnalyticsContext';
-import { computeAvailablePeriods, computeInvoiceBasedROI, prepareTimeChartData } from '@/application/time/analytics';
+import { computeAvailablePeriods, computeInvoiceBasedROI, prepareTimeChartData, computeTimeBasedMonthlyProjections } from '@/application/time/analytics';
 import { TimeChart } from '@/components/statistics/TimeChart';
 import { ROIAnalysis } from '@/components/statistics/ROIAnalysis';
 
@@ -63,6 +63,39 @@ export default function StatisticsPage() {
     const timePrepared = useMemo(() => prepareTimeChartData(timeIndex, timeViewMode, selectedYear, timeViewMode === 'daily' ? selectedMonth : undefined), [timeIndex, timeViewMode, selectedYear, selectedMonth]);
     const roiData = useMemo(() => computeInvoiceBasedROI(basics.perClientTotalsYTD, timeIndex, new Date().getFullYear()), [basics.perClientTotalsYTD, timeIndex]);
 
+    // Time-based monthly projections from tracked minutes * hourlyRate
+    const timeProjectionsByMonth = useMemo(() => computeTimeBasedMonthlyProjections(timeIndex, revenueYear), [timeIndex, revenueYear]);
+
+    const timeBasedProjectedAnnual = useMemo(() => {
+        const now = new Date();
+        const isCurrentYear = revenueYear === now.getFullYear();
+        const currentMonth = now.getMonth(); // 0-11
+        const actualsMap: Record<string, number> = {};
+        computeMonthlyTotalsForYear(invoices, revenueYear).forEach(m => { actualsMap[m.month] = m.total; });
+
+        let total = 0;
+        for (let i = 0; i < 12; i++) {
+            const key = `${revenueYear}-${String(i + 1).padStart(2, '0')}`;
+            if (!isCurrentYear) {
+                total += actualsMap[key] || 0;
+                continue;
+            }
+            if (i < currentMonth) {
+                // Past months: use actual invoices
+                total += actualsMap[key] || 0;
+            } else if (i === currentMonth) {
+                // Current month: prefer time-based projection; fallback to actuals
+                const proj = timeProjectionsByMonth[key];
+                total += typeof proj === 'number' && proj > 0 ? proj : (actualsMap[key] || 0);
+            } else {
+                // Future months: use time-based baseline when available
+                const proj = timeProjectionsByMonth[key];
+                total += typeof proj === 'number' && proj > 0 ? proj : 0;
+            }
+        }
+        return total > 0 ? total : revenueForSelectedYear.projectedAnnual;
+    }, [invoices, revenueYear, timeProjectionsByMonth, revenueForSelectedYear.projectedAnnual]);
+
     return (
         <div className="p-6 h-[calc(100vh-4rem)] box-border overflow-auto space-y-4">
             <div className="flex items-center justify-between">
@@ -88,13 +121,14 @@ export default function StatisticsPage() {
                                     selectedYear={revenueYear}
                                     onYearChange={setRevenueYear}
                                     kpis={(function() {
-                                        const projectedDelta = Math.max(0, revenueForSelectedYear.projectedAnnual - revenueForSelectedYear.totalYTD);
+                                        const projectedAnnualDisplay = revenueYear === new Date().getFullYear() ? timeBasedProjectedAnnual : revenueForSelectedYear.projectedAnnual;
+                                        const projectedDelta = Math.max(0, projectedAnnualDisplay - revenueForSelectedYear.totalYTD);
                                         const projectedSubtitle = projectedDelta > 0
                                             ? `+${new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(projectedDelta)}`
                                             : 'Target met';
                                         return [
                                             { label: 'YTD', value: new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(revenueForSelectedYear.totalYTD) },
-                                            { label: 'Projected', value: new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(revenueForSelectedYear.projectedAnnual), sublabel: projectedSubtitle },
+                                            { label: 'Projected', value: new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(projectedAnnualDisplay), sublabel: projectedSubtitle },
                                             { label: 'Monthly Avg', value: new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(revenueForSelectedYear.averageMonthly) },
                                         ];
                                     })()}
@@ -111,10 +145,18 @@ export default function StatisticsPage() {
                                             const isPast = isCurrentYear ? index < currentMonth : true;
                                             const isCurrent = isCurrentYear ? index === currentMonth : false;
                                             const actualValue = typeof actuals[month] === 'number' ? actuals[month] : null;
+                                            const timeProj = timeProjectionsByMonth[month];
+                                            const projection = isCurrentYear
+                                                ? (isPast ? null : (
+                                                    typeof timeProj === 'number' && timeProj > 0
+                                                        ? timeProj
+                                                        : (isCurrent ? (actualValue ?? 0) : Math.round(monthlyRunRate))
+                                                  ))
+                                                : null;
                                             return {
                                                 month,
                                                 actual: isCurrentYear ? (index <= currentMonth ? (actualValue ?? 0) : null) : (actualValue ?? 0),
-                                                projection: isCurrentYear ? (isPast ? null : (isCurrent ? (actualValue ?? 0) : Math.round(monthlyRunRate))) : null,
+                                                projection,
                                             };
                                         });
                                     })()}
@@ -127,7 +169,7 @@ export default function StatisticsPage() {
                                     churchTax={incomeTaxes.churchTax}
                                     soli={incomeTaxes.solidaritySurcharge}
                                     prepayments={incomeTaxes.prepaymentsYearToDate}
-                                    centerTotal={revenueForSelectedYear.projectedAnnual}
+                                    centerTotal={revenueYear === new Date().getFullYear() ? timeBasedProjectedAnnual : revenueForSelectedYear.projectedAnnual}
                                     incomeTaxCurrent={incomeTaxes.incomeTaxCurrent}
                                     incomeTaxProjected={incomeTaxes.incomeTaxProjected}
                                     churchTaxCurrent={incomeTaxes.churchTaxCurrent}
