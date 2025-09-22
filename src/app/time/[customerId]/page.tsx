@@ -3,10 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import type { CustomerData } from '@/domain/models';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TimeTrackingProvider, useTimeTracking } from '@/infrastructure/contexts/TimeTrackingContext';
 import { parseBulkTimeTextFromDay, normalizeTime, parsePauseToMinutes } from '@/application/time/presentation';
 import { useFileSystem } from '@/infrastructure/contexts/FileSystemContext';
@@ -14,40 +12,19 @@ import { format } from 'date-fns';
 import { getSavedDirectoryHandle } from '@/infrastructure/filesystem/fileSystemStorage';
 import { setDirectoryHandle, findCustomerByIdSync, loadCustomers } from '@/infrastructure/repositories/customerRepository';
 
-function MonthSelector({ value, onChange, options }: { value: { year: number; month: number }; onChange: (v: { year: number; month: number }) => void; options: Array<{ year: number; month: number }> }) {
+function MonthSelector({ value, onChange }: { value: { year: number; month: number }; onChange: (v: { year: number; month: number }) => void; }) {
     const current = `${value.year}-${String(value.month).padStart(2, '0')}`;
-    const handle = (val: string) => {
-        const [y, m] = val.split('-').map(Number);
-        onChange({ year: y, month: m });
-    };
-    const unique = useMemo(() => {
-        const set = new Set(options.map(o => `${o.year}-${String(o.month).padStart(2, '0')}`));
-        // Ensure current is present
-        if (!set.has(current)) set.add(current);
-        return Array.from(set).sort((a, b) => b.localeCompare(a));
-    }, [options, current]);
-    const monthInputValue = current; // yyyy-MM
     return (
-        <div className="flex items-center gap-2">
-            <Select value={current} onValueChange={handle}>
-                <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                    {unique.map(k => (
-                        <SelectItem key={k} value={k}>{k}</SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
-            <Input
-                type="month"
-                value={monthInputValue}
-                onChange={(e) => {
-                    const val = e.target.value; // yyyy-MM
-                    const [y, m] = val.split('-').map(Number);
-                    if (!Number.isNaN(y) && !Number.isNaN(m)) onChange({ year: y, month: m });
-                }}
-                className="w-[160px]"
-            />
-        </div>
+        <Input
+            type="month"
+            value={current}
+            onChange={(e) => {
+                const val = e.target.value; // yyyy-MM
+                const [y, m] = val.split('-').map(Number);
+                if (!Number.isNaN(y) && !Number.isNaN(m)) onChange({ year: y, month: m });
+            }}
+            className="w-[160px]"
+        />
     );
 }
 
@@ -61,17 +38,15 @@ function formatDuration(minutes: number): string {
 
 function TimeTable({ customer }: { customer: CustomerData }) {
     const { isInitialized, hasPermission } = useFileSystem();
-    const { timesheet, stats, isLoading, isSaving, loadMonth, upsertEntry, deleteEntry, listAvailableMonths, createMonth } = useTimeTracking();
+    const { timesheet, stats, isLoading, isSaving, loadMonth, upsertEntry, deleteEntry } = useTimeTracking();
     const now = new Date();
     const [ym, setYm] = useState<{ year: number; month: number }>({ year: now.getFullYear(), month: now.getMonth() + 1 });
-    const [options, setOptions] = useState<Array<{ year: number; month: number }>>([]);
-    const [createStatus, setCreateStatus] = useState<'idle' | 'success' | 'error'>('idle');
+    
 
     useEffect(() => {
         if (!isInitialized || !hasPermission) return;
         loadMonth(customer.id, customer.name, ym.year, ym.month, customer.hourlyRate);
-        listAvailableMonths(customer.id, customer.name).then(setOptions).catch(() => setOptions([]));
-    }, [isInitialized, hasPermission, customer, ym.year, ym.month, loadMonth, listAvailableMonths]);
+    }, [isInitialized, hasPermission, customer, ym.year, ym.month, loadMonth]);
 
     const addOrUpdate = async (dateISO: string, start?: string, pause?: number, end?: string, notes?: string) => {
         await upsertEntry({ date: dateISO, start, pauseMinutes: pause, end, notes });
@@ -213,35 +188,7 @@ function TimeTable({ customer }: { customer: CustomerData }) {
         <div className="space-y-4 h-full overflow-auto">
             <div className="flex items-center justify-between gap-3">
                 <div className="text-xl font-medium">{customer.name}</div>
-                <div className="flex items-center gap-2">
-                    <MonthSelector value={ym} onChange={(v) => { setYm(v); setCreateStatus('idle'); }} options={options} />
-                    <Button
-                        variant="outline"
-                        onClick={async () => {
-                            setCreateStatus('idle');
-                            try {
-                                await createMonth(customer.id, customer.name, ym.year, ym.month, customer.hourlyRate);
-                                await listAvailableMonths(customer.id, customer.name).then(setOptions).catch(() => {});
-                                setCreateStatus('success');
-                                setTimeout(() => setCreateStatus('idle'), 2500);
-                            } catch (e) {
-                                console.error(e);
-                                setCreateStatus('error');
-                                setTimeout(() => setCreateStatus('idle'), 3000);
-                            }
-                        }}
-                        disabled={isSaving}
-                        title="Create the timesheet file on disk for this month"
-                    >
-                        {isSaving ? 'Creating…' : 'Create file'}
-                    </Button>
-                    {createStatus === 'success' && (
-                        <span className="text-xs text-green-600">Created</span>
-                    )}
-                    {createStatus === 'error' && (
-                        <span className="text-xs text-red-600">Failed</span>
-                    )}
-                </div>
+                <MonthSelector value={ym} onChange={setYm} />
             </div>
             <Card>
                 <CardHeader>
