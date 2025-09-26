@@ -181,3 +181,45 @@ export function computeMonthlyTotalsForYear(
         .sort(([a], [b]) => (a < b ? -1 : 1))
         .map(([month, total]) => ({ month, total }));
 }
+
+/**
+ * Monthly totals for an arbitrary year with early-month smoothing.
+ * Invoices dated within the first `bufferDays` of a month are attributed to the
+ * previous month (cross-year aware). This helps when invoices are created at
+ * the start of a month but represent the previous month's revenue.
+ */
+export function computeSmoothedMonthlyTotalsForYear(
+    invoices: Invoice[],
+    year: number,
+    bufferDays: number = 12,
+): MonthlyTotalItem[] {
+    const monthlyTotalsMap: Record<string, number> = {};
+
+    for (const inv of invoices) {
+        if (inv.isDeleted) continue;
+        const date = parseDate(inv.invoice_date);
+        if (!date) continue;
+
+        const net = typeof inv.total === 'number' ? inv.total : calculateInvoiceNet(inv);
+
+        let targetYear = date.getFullYear();
+        let targetMonthIndex = date.getMonth(); // 0-11
+        const day = date.getDate();
+
+        if (day <= bufferDays) {
+            // Move to previous month, accounting for year boundaries
+            const prevMonthDate = new Date(date.getFullYear(), date.getMonth(), 0); // last day of previous month
+            targetYear = prevMonthDate.getFullYear();
+            targetMonthIndex = prevMonthDate.getMonth();
+        }
+
+        if (targetYear !== year) continue;
+
+        const monthKey = `${targetYear}-${String(targetMonthIndex + 1).padStart(2, '0')}`;
+        monthlyTotalsMap[monthKey] = (monthlyTotalsMap[monthKey] || 0) + net;
+    }
+
+    return Object.entries(monthlyTotalsMap)
+        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .map(([month, total]) => ({ month, total }));
+}
