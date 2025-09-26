@@ -72,8 +72,8 @@ export default function StatisticsPage() {
         const isCurrentYear = revenueYear === now.getFullYear();
         const currentMonth = now.getMonth(); // 0-11
         const actualsMap: Record<string, number> = {};
-        // Use smoothed monthly totals (12-day buffer) for actuals contribution
-        computeSmoothedMonthlyTotalsForYear(invoices, revenueYear, 12).forEach(m => { actualsMap[m.month] = m.total; });
+        // Use smoothed monthly totals (day < 25 rolls back to previous month)
+        computeSmoothedMonthlyTotalsForYear(invoices, revenueYear, 25).forEach(m => { actualsMap[m.month] = m.total; });
 
         let total = 0;
         for (let i = 0; i < 12; i++) {
@@ -140,8 +140,8 @@ export default function StatisticsPage() {
                                         const currentMonth = now.getMonth();
                                         const labels = Array.from({length: 12}, (_, i) => `${revenueYear}-${String(i+1).padStart(2, '0')}`);
                                         const actuals: Record<string, number> = {};
-                                        // Use smoothed monthly totals (12-day buffer) for chart actuals
-                                        computeSmoothedMonthlyTotalsForYear(invoices, revenueYear, 12).forEach(m => { actuals[m.month] = m.total; });
+                                        // Use smoothed monthly totals (day < 25 rolls back)
+                                        computeSmoothedMonthlyTotalsForYear(invoices, revenueYear, 25).forEach(m => { actuals[m.month] = m.total; });
                                         const monthlyRunRate = revenueForSelectedYear.averageMonthly || 0;
                                         return labels.map((month, index) => {
                                             const isCurrentYear = revenueYear === currentYear;

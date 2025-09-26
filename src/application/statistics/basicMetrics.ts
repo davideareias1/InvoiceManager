@@ -184,14 +184,14 @@ export function computeMonthlyTotalsForYear(
 
 /**
  * Monthly totals for an arbitrary year with early-month smoothing.
- * Invoices dated within the first `bufferDays` of a month are attributed to the
+ * Invoices dated before `cutoffDay` of a month are attributed to the
  * previous month (cross-year aware). This helps when invoices are created at
  * the start of a month but represent the previous month's revenue.
  */
 export function computeSmoothedMonthlyTotalsForYear(
     invoices: Invoice[],
     year: number,
-    bufferDays: number = 12,
+    cutoffDay: number = 25,
 ): MonthlyTotalItem[] {
     const monthlyTotalsMap: Record<string, number> = {};
 
@@ -206,7 +206,7 @@ export function computeSmoothedMonthlyTotalsForYear(
         let targetMonthIndex = date.getMonth(); // 0-11
         const day = date.getDate();
 
-        if (day <= bufferDays) {
+        if (day < cutoffDay) {
             // Move to previous month, accounting for year boundaries
             const prevMonthDate = new Date(date.getFullYear(), date.getMonth(), 0); // last day of previous month
             targetYear = prevMonthDate.getFullYear();
