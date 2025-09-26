@@ -29,6 +29,9 @@ function MonthlyTooltipContent(props: any) {
     if (!active || !payload?.length) return null;
 
     const filtered = payload;
+    const breakdownMap: Record<string, Array<{ client: string; total: number }>> | undefined = props?.payload?.[0]?.payload?.__breakdown;
+    const monthKey = label;
+    const monthBreakdown = breakdownMap?.[monthKey] || [];
     if (!filtered?.length) return null;
 
     return (
@@ -55,6 +58,17 @@ function MonthlyTooltipContent(props: any) {
                     </div>
                 );
             })}
+            {monthBreakdown.length > 0 && (
+                <div className="mt-2 border-t pt-2">
+                    <div className="text-xs text-muted-foreground mb-1">By client</div>
+                    {monthBreakdown.map((b, i) => (
+                        <div key={i} className="flex items-center justify-between gap-2">
+                            <span className="truncate max-w-[160px]">{b.client}</span>
+                            <span className="ml-2">{formatCurrency(b.total)}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

@@ -223,3 +223,46 @@ export function computeSmoothedMonthlyTotalsForYear(
         .sort(([a], [b]) => (a < b ? -1 : 1))
         .map(([month, total]) => ({ month, total }));
 }
+
+/**
+ * Per-month per-client totals with early-month smoothing (day < cutoffDay goes to previous month).
+ * Returns a map keyed by 'YYYY-MM' with arrays of { client, total } sorted desc.
+ */
+export function computeSmoothedMonthlyTotalsByClientForYear(
+    invoices: Invoice[],
+    year: number,
+    cutoffDay: number = 25,
+): Record<string, ClientTotalItem[]> {
+    const map: Record<string, Record<string, number>> = {};
+
+    for (const inv of invoices) {
+        if (inv.isDeleted) continue;
+        const date = parseDate(inv.invoice_date);
+        if (!date) continue;
+        const net = typeof inv.total === 'number' ? inv.total : calculateInvoiceNet(inv);
+        const client = getClientName(inv);
+
+        let targetYear = date.getFullYear();
+        let targetMonthIndex = date.getMonth();
+        const day = date.getDate();
+        if (day < cutoffDay) {
+            const prevMonthDate = new Date(date.getFullYear(), date.getMonth(), 0);
+            targetYear = prevMonthDate.getFullYear();
+            targetMonthIndex = prevMonthDate.getMonth();
+        }
+        if (targetYear !== year) continue;
+
+        const monthKey = `${targetYear}-${String(targetMonthIndex + 1).padStart(2, '0')}`;
+        if (!map[monthKey]) map[monthKey] = {};
+        map[monthKey][client] = (map[monthKey][client] || 0) + net;
+    }
+
+    const result: Record<string, ClientTotalItem[]> = {};
+    Object.entries(map).forEach(([month, clientMap]) => {
+        const items = Object.entries(clientMap)
+            .map(([client, total]) => ({ client, total }))
+            .sort((a, b) => b.total - a.total);
+        result[month] = items;
+    });
+    return result;
+}
