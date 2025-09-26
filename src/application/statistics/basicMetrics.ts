@@ -191,7 +191,7 @@ export function computeMonthlyTotalsForYear(
 export function computeSmoothedMonthlyTotalsForYear(
     invoices: Invoice[],
     year: number,
-    cutoffDay: number = 25,
+    cutoffDay: number = 20,
 ): MonthlyTotalItem[] {
     const monthlyTotalsMap: Record<string, number> = {};
 
@@ -231,7 +231,7 @@ export function computeSmoothedMonthlyTotalsForYear(
 export function computeSmoothedMonthlyTotalsByClientForYear(
     invoices: Invoice[],
     year: number,
-    cutoffDay: number = 25,
+    cutoffDay: number = 20,
 ): Record<string, ClientTotalItem[]> {
     const map: Record<string, Record<string, number>> = {};
 
