@@ -20,6 +20,7 @@ import type { CompanyInfo, CustomerData, Invoice, InvoiceItem, ProductData } fro
 import { showSuccess, showError } from '@/shared/notifications';
 import { InvoiceForm } from '@/components/invoices/new/InvoiceForm';
 import type { InvoiceFormState, InvoiceFormAction, ItemForm, TimeLinkInfo } from '@/components/invoices/new/types';
+import { computeEffectiveBillingPeriod, formatBillingPeriodLabel } from '@/application/billing/cutoff';
 const PdfViewer = dynamic(() => import('@/components/PdfViewer').then(m => m.PdfViewer), { ssr: false });
 
 type Step = 'edit' | 'preview';
@@ -263,10 +264,8 @@ export default function NewInvoicePage() {
     const applyMonthlyHoursToItem = async (index: number) => {
         try {
             const date = new Date(formState.invoiceDate || new Date());
-            const year = date.getFullYear();
-            const month = date.getMonth() + 1;
-
-            const label = `Hours ${date.toLocaleString(undefined, { month: 'long', year: 'numeric' })}`;
+            const { year, month } = computeEffectiveBillingPeriod(date, 20);
+            const label = `Hours ${formatBillingPeriodLabel(year, month)}`;
 
             // If no customer selected, create labeled empty row
             if (!matchedCustomer) {
@@ -296,7 +295,8 @@ export default function NewInvoicePage() {
         } catch (e) {
             console.error('Failed to apply monthly hours', e);
             const date = new Date(formState.invoiceDate || new Date());
-            const label = `Hours ${date.toLocaleString(undefined, { month: 'long', year: 'numeric' })}`;
+            const { year, month } = computeEffectiveBillingPeriod(date, 20);
+            const label = `Hours ${formatBillingPeriodLabel(year, month)}`;
             dispatch({ type: 'UPDATE_ITEM', index, payload: { name: label, quantity: 0, price: 0 } });
         }
     };
@@ -331,17 +331,17 @@ export default function NewInvoicePage() {
     // Auto-refresh time-linked items when invoice month/year changes
     const invoiceMonthKey = useMemo(() => {
         const d = new Date(formState.invoiceDate || new Date());
-        return `${d.getFullYear()}-${d.getMonth() + 1}`;
+        const { year, month } = computeEffectiveBillingPeriod(d, 20);
+        return `${year}-${month}`;
     }, [formState.invoiceDate]);
 
     useEffect(() => {
         const d = new Date(formState.invoiceDate || new Date());
-        const year = d.getFullYear();
-        const month = d.getMonth() + 1;
+        const { year, month } = computeEffectiveBillingPeriod(d, 20);
         formState.items.forEach((it, idx) => {
             if (!it.timeLink) return;
             if (it.timeLink.year !== year || it.timeLink.month !== month) {
-                dispatch({ type: 'UPDATE_ITEM', index: idx, payload: { timeLink: { ...it.timeLink, year, month }, name: `Hours ${d.toLocaleString(undefined, { month: 'long', year: 'numeric' })}` } });
+                dispatch({ type: 'UPDATE_ITEM', index: idx, payload: { timeLink: { ...it.timeLink, year, month }, name: `Hours ${formatBillingPeriodLabel(year, month)}` } });
                 setTimeout(() => refreshTimeLinkedItem(idx), 0);
             } else {
                 refreshTimeLinkedItem(idx);
