@@ -33,16 +33,25 @@ function daysInMonth(year: number, month: number): number {
     return new Date(year, month, 0).getDate();
 }
 
+function minutesToHHMM(minutes: number): string {
+    if (!minutes || minutes === 0) return '';
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+}
+
 function buildWorkbookFromTimesheet(ts: TimeSheetMonth): XLSX.WorkBook {
     // Normalize to include ALL days of the month
     const totalDays = daysInMonth(ts.year, ts.month);
     const byDate = new Map<string, TimeEntry>();
     ts.entries.forEach(e => byDate.set(e.date, e));
 
-    const header = ['Kalendertag', 'Beginn', 'Pause (Min)', 'Ende', 'Dauer (Min)', 'Bemerkungen'];
+    const header = ['Kalendertag', 'Beginn', 'Pause (Min)', 'Ende', 'Dauer (hh:mm)', 'Bemerkungen'];
     const rows: any[][] = [header];
 
     const metaRows: any[][] = [['id', 'date']];
+
+    let totalMinutes = 0;
 
     for (let d = 1; d <= totalDays; d++) {
         const date = `${ts.year}-${String(ts.month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -55,16 +64,28 @@ function buildWorkbookFromTimesheet(ts: TimeSheetMonth): XLSX.WorkBook {
             durationMinutes: 0,
             notes: ''
         };
+        const durationStr = minutesToHHMM(e.durationMinutes || 0);
+        totalMinutes += e.durationMinutes || 0;
         rows.push([
             e.date,
             e.start || '',
             typeof e.pauseMinutes === 'number' ? e.pauseMinutes : '',
             e.end || '',
-            e.durationMinutes || 0,
+            durationStr,
             e.notes || ''
         ]);
         metaRows.push([e.id, e.date]);
     }
+
+    // Add total row
+    rows.push([
+        'TOTAL',
+        '',
+        '',
+        '',
+        minutesToHHMM(totalMinutes),
+        ''
+    ]);
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
 
@@ -87,6 +108,16 @@ function buildWorkbookFromTimesheet(ts: TimeSheetMonth): XLSX.WorkBook {
     const meta = XLSX.utils.aoa_to_sheet(metaRows);
     XLSX.utils.book_append_sheet(wb, meta, '_meta');
     return wb;
+}
+
+function hhmmToMinutes(hhmmStr: string): number {
+    if (!hhmmStr || hhmmStr === '') return 0;
+    const parts = String(hhmmStr).split(':');
+    if (parts.length !== 2) return 0;
+    const hours = Number(parts[0]);
+    const mins = Number(parts[1]);
+    if (Number.isNaN(hours) || Number.isNaN(mins)) return 0;
+    return hours * 60 + mins;
 }
 
 function parseWorkbookToTimesheet(
@@ -115,14 +146,17 @@ function parseWorkbookToTimesheet(
     const entries: TimeEntry[] = [];
     for (let i = 1; i < rows.length; i++) {
         const r = rows[i];
-        const date = String(r[0] || '').trim();
-        if (!date) continue;
+        const dateRaw = String(r[0] || '').trim();
+        // Skip the TOTAL row
+        if (!dateRaw || dateRaw === 'TOTAL') continue;
+        const date = dateRaw;
         const start = String(r[1] || '').trim() || undefined;
         const pauseStr = r[2];
         const pauseMinutes = typeof pauseStr === 'number' ? pauseStr : (String(pauseStr || '').trim() ? Number(String(pauseStr).trim()) : undefined);
         const end = String(r[3] || '').trim() || undefined;
         const durationVal = r[4];
-        const durationMinutes = typeof durationVal === 'number' ? durationVal : Number(String(durationVal || '0')) || 0;
+        // Convert hh:mm to minutes, or fall back to number if it's in old format
+        const durationMinutes = typeof durationVal === 'number' ? durationVal : hhmmToMinutes(String(durationVal || ''));
         const notes = String(r[5] || '').trim() || undefined;
         const id = idByDate.get(date) || crypto.randomUUID();
         entries.push({ id, date, start, pauseMinutes, end, durationMinutes, notes });

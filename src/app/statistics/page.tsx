@@ -218,12 +218,18 @@ export default function StatisticsPage() {
                                                 ? (isPast ? null : (
                                                     typeof refinedProj === 'number' && refinedProj > 0
                                                         ? refinedProj
-                                                        : (isCurrent ? (actualValue ?? 0) : Math.round(monthlyRunRate))
+                                                        : (Math.round(monthlyRunRate) || null)
                                                   ))
                                                 : null;
                                             const row: any = {
                                                 month,
-                                                actual: isCurrentYear ? (index <= currentMonth ? (actualValue ?? 0) : null) : (actualValue ?? 0),
+                                                // Do not force current month actuals to zero; leave null until real data exists
+                                                actual: (function() {
+                                                    if (!isCurrentYear) return (actualValue ?? 0);
+                                                    if (index < currentMonth) return (actualValue ?? 0);
+                                                    if (index === currentMonth) return actualValue; // may be null
+                                                    return null; // future months
+                                                })(),
                                                 projection,
                                             };
                                             // attach breakdown to power the tooltip
