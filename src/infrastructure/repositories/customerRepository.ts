@@ -4,6 +4,7 @@ import { CustomerData, CustomerRepository } from '../../domain/models';
 import { v4 as uuidv4 } from 'uuid';
 import { saveCustomerToFile, loadCustomersFromFiles, deleteCustomerFile } from '../filesystem/fileSystemStorage';
 import { saveCustomerToGoogleDrive } from '../google/googleDriveStorage';
+import { isOnline } from '../sync/networkMonitor';
 
 // Structure for a saved customer with ID
 export interface SavedCustomer extends CustomerData {
@@ -72,6 +73,11 @@ export const saveCustomer = async (customer: CustomerData): Promise<SavedCustome
         throw new Error('No directory handle available. Please grant file access permissions.');
     }
 
+    // Check online status
+    if (!isOnline()) {
+        throw new Error('Cannot save while offline. Please connect to the internet to make changes.');
+    }
+
     try {
         const now = new Date().toISOString();
 
@@ -121,6 +127,11 @@ export const saveCustomer = async (customer: CustomerData): Promise<SavedCustome
  * @returns true if successful
  */
 export const deleteCustomer = async (customerId: string): Promise<boolean> => {
+    // Check online status
+    if (!isOnline()) {
+        throw new Error('Cannot delete while offline. Please connect to the internet to make changes.');
+    }
+
     try {
         const updatedCustomers = cachedCustomers.filter(c => c.id !== customerId);
 

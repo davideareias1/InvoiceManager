@@ -6,6 +6,7 @@ import { saveInvoiceToFile, loadInvoicesFromFiles } from '../filesystem/fileSyst
 import { saveInvoiceToGoogleDrive } from '../google/googleDriveStorage';
 import { format, addDays } from 'date-fns';
 import { formatDate } from '../../shared/formatters';
+import { isOnline } from '../sync/networkMonitor';
 
 // Global variable to cache directory handle and invoices
 let directoryHandle: FileSystemDirectoryHandle | null = null;
@@ -81,6 +82,11 @@ export const saveInvoice = async (invoice: Partial<Invoice>): Promise<Invoice> =
         throw new Error('No directory handle available. Please grant file access permissions.');
     }
 
+    // Check online status
+    if (!isOnline()) {
+        throw new Error('Cannot save while offline. Please connect to the internet to make changes.');
+    }
+
     try {
         const now = new Date().toISOString();
         let updatedInvoice: Invoice;
@@ -140,6 +146,11 @@ export const saveInvoice = async (invoice: Partial<Invoice>): Promise<Invoice> =
 export const deleteInvoice = async (id: string): Promise<boolean> => {
     if (!directoryHandle) {
         throw new Error('No directory handle available. Please grant file access permissions.');
+    }
+
+    // Check online status
+    if (!isOnline()) {
+        throw new Error('Cannot delete while offline. Please connect to the internet to make changes.');
     }
 
     try {

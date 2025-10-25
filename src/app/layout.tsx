@@ -8,6 +8,7 @@ import { Navigation } from '../components/Navigation'
 import { FolderAccessGate } from '../components/FolderAccessGate'
 import { TaxSettingsProvider } from '@/infrastructure/contexts/TaxSettingsContext'
 import { TimeAnalyticsProvider } from '@/infrastructure/contexts/TimeAnalyticsContext'
+import { SyncUIWrapper } from '../components/sync/SyncUIWrapper'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -34,7 +35,9 @@ export default function RootLayout({
                                     <Navigation />
                                     <main className="h-[calc(100vh-4rem)] overflow-hidden">
                                         <FolderAccessGate>
-                                            {children}
+                                            <SyncUIWrapper>
+                                                {children}
+                                            </SyncUIWrapper>
                                         </FolderAccessGate>
                                     </main>
                                 </TimeAnalyticsProvider>

@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ProductData, ProductRepository } from '../../domain/models';
 import { saveProductToFile, loadProductsFromFiles, deleteProductFile } from '../filesystem/fileSystemStorage';
 import { saveProductToGoogleDrive } from '../google/googleDriveStorage';
+import { isOnline } from '../sync/networkMonitor';
 
 // Global variable to cache directory handle and products
 let directoryHandle: FileSystemDirectoryHandle | null = null;
@@ -44,6 +45,11 @@ export async function loadProducts(): Promise<ProductData[]> {
 export async function saveProduct(product: Partial<ProductData>): Promise<ProductData> {
     if (!directoryHandle) {
         throw new Error('No directory handle available. Please grant file access permissions.');
+    }
+
+    // Check online status
+    if (!isOnline()) {
+        throw new Error('Cannot save while offline. Please connect to the internet to make changes.');
     }
 
     try {
@@ -87,6 +93,11 @@ export async function saveProduct(product: Partial<ProductData>): Promise<Produc
 
 // Delete product by ID (soft delete)
 export async function deleteProduct(id: string): Promise<boolean> {
+    // Check online status
+    if (!isOnline()) {
+        throw new Error('Cannot delete while offline. Please connect to the internet to make changes.');
+    }
+
     try {
         const productIndex = cachedProducts.findIndex(product => product.id === id);
 

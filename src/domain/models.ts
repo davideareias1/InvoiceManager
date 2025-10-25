@@ -27,6 +27,8 @@ export interface CustomerData {
     hourlyRate?: number; // EUR per hour for time tracking
     lastModified: string;
     isDeleted?: boolean;
+    syncStatus?: 'synced' | 'pending' | 'conflict';
+    lastSyncedAt?: string;
 }
 
 export interface ProductData {
@@ -37,6 +39,8 @@ export interface ProductData {
     description?: string;
     lastModified: string;
     isDeleted?: boolean;
+    syncStatus?: 'synced' | 'pending' | 'conflict';
+    lastSyncedAt?: string;
 }
 
 export interface Invoice {
@@ -69,6 +73,8 @@ export interface Invoice {
     isDeleted?: boolean;
     isRectified?: boolean; // Tracks if this invoice has been rectified (cancelled)
     rectifiedBy?: string; // Invoice number of the rectification invoice
+    syncStatus?: 'synced' | 'pending' | 'conflict';
+    lastSyncedAt?: string;
 }
 
 export interface CompanyInfo {
@@ -93,6 +99,8 @@ export interface CompanyInfo {
     is_freelancer?: boolean;
     full_name?: string;
     lastModified: string;
+    syncStatus?: 'synced' | 'pending' | 'conflict';
+    lastSyncedAt?: string;
 }
 
 export enum InvoiceStatus {
@@ -164,6 +172,8 @@ export interface TimeSheetMonth {
     month: number; // 1-12
     entries: TimeEntry[];
     lastModified: string;
+    syncStatus?: 'synced' | 'pending' | 'conflict';
+    lastSyncedAt?: string;
 }
 
 export interface TimeStats {
@@ -192,6 +202,8 @@ export interface PersonalTaxSettings {
     jointAssessment: boolean; // Married joint assessment (splitting tariff approximation)
     partnerTaxableAnnualProjection?: number; // EUR projected taxable income for partner (for splitting)
     lastModified: string;
+    syncStatus?: 'synced' | 'pending' | 'conflict';
+    lastSyncedAt?: string;
 }
 
 export interface TaxSettingsRepository {

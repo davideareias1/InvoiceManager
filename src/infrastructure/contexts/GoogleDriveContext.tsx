@@ -15,6 +15,28 @@ import {
 } from '../google/googleDriveStorage';
 import { Invoice } from '../../domain/models';
 import { useFileSystemChild } from './FileSystemContext';
+import {
+    initializeNetworkMonitor,
+    cleanupNetworkMonitor,
+    onNetworkStatusChange,
+    isOnline as checkIsOnline,
+} from '../sync/networkMonitor';
+import {
+    startSyncScheduler,
+    stopSyncScheduler,
+    triggerImmediateSync,
+    onSyncStarted,
+    onSyncCompleted,
+    onSyncProgressUpdate,
+    onSyncErrorOccurred,
+} from '../sync/syncScheduler';
+import {
+    getSyncState,
+    setSyncEnabled,
+    isSyncEnabled as checkSyncEnabled,
+    isDataSourceSelected,
+} from '../sync/syncState';
+import { SyncProgress, SyncResult } from '../sync/types';
 
 interface GoogleDriveContextType {
     isSupported: boolean;
@@ -23,7 +45,13 @@ interface GoogleDriveContextType {
     isAuthenticated: boolean;
     isBackupEnabled: boolean;
     isSyncing: boolean;
+    isOnline: boolean;
+    isReadOnly: boolean;
+    isSyncEnabled: boolean;
+    lastSyncTime: Date | null;
+    syncError: Error | null;
     setIsBackupEnabled: (enabled: boolean) => void;
+    setSyncEnabled: (enabled: boolean) => void;
     requestPermission: () => Promise<void>;
     signOut: () => Promise<void>;
     saveInvoice: (invoice: Invoice) => Promise<boolean>;
@@ -31,8 +59,9 @@ interface GoogleDriveContextType {
     saveCustomer: (customer: any) => Promise<boolean>;
     saveProduct: (product: any) => Promise<boolean>;
     backup: () => Promise<void>;
+    manualSync: () => Promise<void>;
     connectionStatusMessage: string;
-    syncProgress: { current: number, total: number } | null;
+    syncProgress: SyncProgress | null;
 }
 
 const GoogleDriveContext = createContext<GoogleDriveContextType | undefined>(undefined);
@@ -56,10 +85,17 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isBackupEnabled, setIsBackupEnabled] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [isOnline, setIsOnline] = useState(true);
+    const [isSyncEnabled, setIsSyncEnabledState] = useState(false);
+    const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+    const [syncError, setSyncError] = useState<Error | null>(null);
     const [connectionStatusMessage, setConnectionStatusMessage] = useState('Initializing...');
-    const [syncProgress, setSyncProgress] = useState<{ current: number, total: number } | null>(null);
+    const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
 
     const fileSystemChildContext = useFileSystemChild();
+
+    // Computed: read-only mode when offline
+    const isReadOnly = !isOnline;
     
     const saveInvoice = useCallback(async (invoice: Invoice): Promise<boolean> => {
         return true;
@@ -78,6 +114,20 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
 
     const saveProduct = useCallback(async (product: any): Promise<boolean> => {
         return true;
+    }, []);
+
+    // Initialize network monitor
+    useEffect(() => {
+        initializeNetworkMonitor();
+        
+        const unsubscribe = onNetworkStatusChange((status) => {
+            setIsOnline(status.isOnline);
+        });
+
+        return () => {
+            cleanupNetworkMonitor();
+            unsubscribe();
+        };
     }, []);
 
     // Initialize Google Drive API
@@ -105,6 +155,16 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
                 const backupEnabled = localStorage.getItem('google-drive-backup-enabled') === 'true';
                 setIsBackupEnabled(backupEnabled && authStatus);
                 
+                // Load sync enabled state
+                const syncEnabled = checkSyncEnabled();
+                setIsSyncEnabledState(syncEnabled);
+                
+                // Load last sync time from sync state
+                const syncState = getSyncState();
+                if (syncState.lastSyncTimestamp) {
+                    setLastSyncTime(new Date(syncState.lastSyncTimestamp));
+                }
+                
                 setConnectionStatusMessage(authStatus ? 'Connected' : 'Ready to connect');
             } catch (error) {
                 console.error('Error during Google Drive initialization:', error);
@@ -120,7 +180,48 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         initialize();
     }, []); // Only run once on mount
 
-    // Monitor sync status
+    // Start/stop sync scheduler based on sync enabled and authentication
+    useEffect(() => {
+        if (isSyncEnabled && isAuthenticated && isDataSourceSelected()) {
+            // Register sync callbacks
+            onSyncStarted(() => {
+                setIsSyncing(true);
+                setSyncError(null);
+            });
+
+            onSyncCompleted((result: SyncResult) => {
+                setIsSyncing(false);
+                if (result.success) {
+                    setLastSyncTime(new Date());
+                    setSyncError(null);
+                } else {
+                    setSyncError(result.error || new Error('Sync failed'));
+                }
+            });
+
+            onSyncProgressUpdate((progress: SyncProgress) => {
+                setSyncProgress(progress);
+            });
+
+            onSyncErrorOccurred((error: Error) => {
+                setSyncError(error);
+                setIsSyncing(false);
+            });
+
+            // Start the sync scheduler
+            startSyncScheduler();
+            console.log('Sync scheduler started');
+
+            return () => {
+                stopSyncScheduler();
+                console.log('Sync scheduler stopped');
+            };
+        } else {
+            stopSyncScheduler();
+        }
+    }, [isSyncEnabled, isAuthenticated]);
+
+    // Monitor legacy sync status
     useEffect(() => {
         const interval = setInterval(() => {
             const syncStatus = getSyncStatus();
@@ -214,10 +315,19 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         }
 
         setConnectionStatusMessage('Backing up...');
-        setSyncProgress({ current: 0, total: 0 });
+        setSyncProgress({ 
+            current: 0, 
+            total: 0, 
+            stage: 'pushing',
+            message: 'Starting backup...'
+        });
         
         const handleProgress = (progress: { current: number, total: number }) => {
-            setSyncProgress(progress);
+            setSyncProgress({
+                ...progress,
+                stage: 'pushing',
+                message: 'Backing up data...'
+            });
         };
 
         try {
@@ -236,6 +346,32 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         }
     }, [isSupported, isAuthenticated]);
 
+    const handleSetSyncEnabled = useCallback((enabled: boolean) => {
+        setSyncEnabled(enabled);
+        setIsSyncEnabledState(enabled);
+    }, []);
+
+    const manualSync = useCallback(async (): Promise<void> => {
+        if (!isSupported || !isAuthenticated) {
+            throw new Error('Google Drive not available or not authenticated');
+        }
+
+        if (!isOnline) {
+            throw new Error('Cannot sync while offline');
+        }
+
+        if (!isDataSourceSelected()) {
+            throw new Error('Data source not selected. Please select a data source first.');
+        }
+
+        try {
+            await triggerImmediateSync();
+        } catch (error) {
+            console.error('Error during manual sync:', error);
+            throw error;
+        }
+    }, [isSupported, isAuthenticated, isOnline]);
+
     const contextValue: GoogleDriveContextType = React.useMemo(() => ({
         isSupported,
         isInitialized,
@@ -243,7 +379,13 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         isAuthenticated,
         isBackupEnabled,
         isSyncing,
+        isOnline,
+        isReadOnly,
+        isSyncEnabled,
+        lastSyncTime,
+        syncError,
         setIsBackupEnabled,
+        setSyncEnabled: handleSetSyncEnabled,
         requestPermission,
         signOut,
         saveInvoice,
@@ -251,6 +393,7 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         saveCustomer,
         saveProduct,
         backup,
+        manualSync,
         connectionStatusMessage,
         syncProgress
     }), [
@@ -260,6 +403,12 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         isAuthenticated,
         isBackupEnabled,
         isSyncing,
+        isOnline,
+        isReadOnly,
+        isSyncEnabled,
+        lastSyncTime,
+        syncError,
+        handleSetSyncEnabled,
         requestPermission,
         signOut,
         saveInvoice,
@@ -267,6 +416,7 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
         saveCustomer,
         saveProduct,
         backup,
+        manualSync,
         connectionStatusMessage,
         syncProgress
     ]);

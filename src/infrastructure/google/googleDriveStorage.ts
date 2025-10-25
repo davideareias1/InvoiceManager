@@ -949,4 +949,138 @@ export async function saveInvoiceToGoogleDrive(invoice: Invoice): Promise<void> 
     } catch (error) {
         console.error('Error saving invoice to Google Drive:', error);
     }
+}
+
+// --- Bidirectional Sync Functions ---
+
+/**
+ * Download all data from Google Drive with timestamps
+ */
+export async function downloadAllDataFromDrive(): Promise<{
+    invoices: Invoice[];
+    customers: CustomerData[];
+    products: ProductData[];
+    companyInfo: CompanyInfo | null;
+}> {
+    if (!await isGoogleDriveAuthenticated()) {
+        throw new Error('Not authenticated with Google Drive');
+    }
+
+    try {
+        await initializeDirectoryStructure();
+
+        // Download all data in parallel
+        const [customers, products, invoices, companyInfo] = await Promise.all([
+            getDriveFiles<CustomerData>(folderIds[CUSTOMERS_DIRECTORY]),
+            getDriveFiles<ProductData>(folderIds[PRODUCTS_DIRECTORY]),
+            getDriveFilesFromAllYearFolders<Invoice>(folderIds[INVOICES_DIRECTORY]),
+            downloadCompanyInfo(),
+        ]);
+
+        // Convert maps to arrays and filter deleted items
+        const customersList = Array.from(customers.values())
+            .map(c => c.data)
+            .filter(c => !c.isDeleted);
+        const productsList = Array.from(products.values())
+            .map(p => p.data)
+            .filter(p => !p.isDeleted);
+        const invoicesList = Array.from(invoices.values())
+            .map(i => i.data)
+            .filter(i => !i.isDeleted);
+
+        return {
+            invoices: invoicesList,
+            customers: customersList,
+            products: productsList,
+            companyInfo,
+        };
+    } catch (error) {
+        console.error('Error downloading data from Google Drive:', error);
+        throw error;
+    }
+}
+
+/**
+ * Download company info from Drive
+ */
+async function downloadCompanyInfo(): Promise<CompanyInfo | null> {
+    try {
+        const file = await findFileByName(COMPANY_INFO_FILENAME, folderIds[APP_FOLDER_NAME]);
+        if (!file) {
+            return null;
+        }
+
+        const content = await gapi.client.drive.files.get({
+            fileId: file.fileId,
+            alt: 'media',
+        });
+
+        return JSON.parse(content.result as string) as CompanyInfo;
+    } catch (error) {
+        console.error('Error downloading company info:', error);
+        return null;
+    }
+}
+
+/**
+ * Upload all data to Google Drive (used by sync engine)
+ */
+export async function uploadAllDataToDrive(data: {
+    invoices: Invoice[];
+    customers: CustomerData[];
+    products: ProductData[];
+    companyInfo: CompanyInfo | null;
+}): Promise<void> {
+    if (!await isGoogleDriveAuthenticated()) {
+        throw new Error('Not authenticated with Google Drive');
+    }
+
+    try {
+        await initializeDirectoryStructure();
+
+        const uploadPromises: Promise<void>[] = [];
+
+        // Upload company info
+        if (data.companyInfo) {
+            uploadPromises.push(uploadCompanyInfo(data.companyInfo, () => {}));
+        }
+
+        // Upload customers
+        data.customers.forEach(customer => {
+            uploadPromises.push(uploadCustomer(customer, () => {}));
+        });
+
+        // Upload products
+        data.products.forEach(product => {
+            uploadPromises.push(uploadProduct(product, () => {}));
+        });
+
+        // Upload invoices grouped by year
+        const invoicesByYear = new Map<string, Invoice[]>();
+        data.invoices.forEach(invoice => {
+            const year = new Date(invoice.invoice_date).getFullYear().toString();
+            if (!invoicesByYear.has(year)) {
+                invoicesByYear.set(year, []);
+            }
+            invoicesByYear.get(year)!.push(invoice);
+        });
+
+        for (const [year, yearInvoices] of invoicesByYear) {
+            const yearFolderId = await findOrCreateFolder(year, folderIds[INVOICES_DIRECTORY]);
+            yearInvoices.forEach(invoice => {
+                uploadPromises.push(uploadInvoiceToYearFolder(invoice, yearFolderId, () => {}));
+            });
+        }
+
+        // Wait for all uploads with error handling
+        const results = await Promise.allSettled(uploadPromises);
+        const failed = results.filter(r => r.status === 'rejected');
+
+        if (failed.length > 0) {
+            console.error(`${failed.length} uploads failed during sync`);
+        }
+    } catch (error) {
+        console.error('Error uploading data to Google Drive:', error);
+        throw error;
+    }
 } 
