@@ -1,0 +1,11 @@
+{
+  "id": "personal_tax_settings",
+  "churchTaxRatePercent": 0,
+  "isChurchMember": false,
+  "federalState": "BW",
+  "annualDeductibleExpenses": 0,
+  "prepaymentsYearToDate": 872,
+  "jointAssessment": false,
+  "partnerTaxableAnnualProjection": 0,
+  "lastModified": "2025-10-26T22:18:22.684Z"
+}

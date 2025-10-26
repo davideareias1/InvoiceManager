@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { saveCustomerToFile, loadCustomersFromFiles, deleteCustomerFile } from '../filesystem/fileSystemStorage';
 import { saveCustomerToGoogleDrive } from '../google/googleDriveStorage';
 import { isOnline } from '../sync/networkMonitor';
+import { markDataDirty } from '../sync/syncState';
 
 // Structure for a saved customer with ID
 export interface SavedCustomer extends CustomerData {
@@ -113,6 +114,7 @@ export const saveCustomer = async (customer: CustomerData): Promise<SavedCustome
 
         // Save to file system
         await saveCustomerToFile(updatedCustomer);
+        markDataDirty();
 
         return updatedCustomer;
     } catch (error) {
@@ -146,6 +148,7 @@ export const deleteCustomer = async (customerId: string): Promise<boolean> => {
         if (directoryHandle) {
             try {
                 await deleteCustomerFile(customerId);
+                markDataDirty();
             } catch (error) {
                 console.error('Error deleting customer file:', error);
                 // Continue anyway as we've already updated the cache

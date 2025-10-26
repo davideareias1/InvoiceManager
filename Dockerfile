@@ -16,6 +16,10 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Set environment variables for build
+ENV NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY=AIzaSyAGPAk38I3wKemZ62YOTnoIDsUBVyZglpc
+ENV NEXT_PUBLIC_CLIENT_ID=1052428720970-hcfhot632mpvb4db86cqak4patqfd9ji.apps.googleusercontent.com
+
 # Build the application
 RUN npm run build
 

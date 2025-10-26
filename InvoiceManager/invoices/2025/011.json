@@ -1,0 +1,47 @@
+{
+  "invoice_date": "2025-10-01",
+  "due_date": "2025-10-15",
+  "issuer": {
+    "name": "Davide Figueiredo Areias",
+    "address": "Königsberger Straße",
+    "city": "Tübingen 72072"
+  },
+  "customer": {
+    "id": "5e1bbd61-baf9-4e2c-8cdb-94a487d405ee",
+    "name": "Striatech GmbH",
+    "address": "Vor dem Kreuzberg 17, 72070",
+    "city": "Tübingen",
+    "lastModified": "2025-09-21T18:31:05.191Z",
+    "createdAt": "2025-07-03T13:23:56.947Z",
+    "updatedAt": "2025-09-21T18:31:05.191Z",
+    "hourlyRate": 40,
+    "isDeleted": false
+  },
+  "items": [
+    {
+      "name": "Hours September 2025",
+      "quantity": 103.5,
+      "price": 40,
+      "description": "Softwareentwicklung – Striatech GmbH (Abrechnung nach Stunden)"
+    }
+  ],
+  "total": 4140,
+  "bank_details": {
+    "name": "Millennium bcp",
+    "iban": "PT50003300004526488597405",
+    "bic": "BCOMPTPL"
+  },
+  "tax_rate": 0,
+  "notes": "",
+  "is_paid": true,
+  "lastModified": "2025-10-13T15:10:32.783Z",
+  "isDeleted": false,
+  "isRectified": false,
+  "tax_exemption_reason": "Gemäß § 19 UStG keine Umsatzsteuer (Kleinunternehmerregelung)",
+  "client_name": "Striatech GmbH",
+  "client_address": "Vor dem Kreuzberg 17, 72070\nTübingen",
+  "client_vat_id": "",
+  "invoice_number": "011",
+  "id": "ab33236c-9d34-43d0-b6f6-05d221ca5982",
+  "status": "paid"
+}

@@ -15,22 +15,27 @@ import {
     saveCompanyInfoToFile,
 } from '../filesystem/fileSystemStorage';
 
+// Satisfy TypeScript in client-side code when Node types aren't present
+declare const process: any;
+
 // Constants
 const LOCAL_STORAGE_TOKEN_KEY = 'google-drive-auth-token';
 const CUSTOMERS_DIRECTORY = 'customers';
 const PRODUCTS_DIRECTORY = 'products';
 const INVOICES_DIRECTORY = 'invoices';
+const TIMESHEETS_DIRECTORY = 'timesheets';
 const APP_FOLDER_NAME = 'InvoiceManager';
 const COMPANY_INFO_FILENAME = 'company_info.json';
+const TAX_SETTINGS_FILENAME = 'personal_tax_settings.json';
 
 // Use environment variables for API credentials
-const CLIENT_ID = process.env.NEXT_PUBLIC_CLIENT_ID || '';
-const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY || '';
+const CLIENT_ID = process.env.NEXT_PUBLIC_CLIENT_ID || '1052428720970-hcfhot632mpvb4db86cqak4patqfd9ji.apps.googleusercontent.com';
+const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY || 'AIzaSyAGPAk38I3wKemZ62YOTnoIDsUBVyZglpc';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
-if (!CLIENT_ID || !API_KEY) {
-    console.warn('Google Drive API credentials missing. Please configure them in your .env.local file.');
+if (!API_KEY) {
+    console.warn('Google Drive API key missing. Please configure it in your .env.local file.');
 }
 
 // Global state
@@ -40,15 +45,38 @@ let gisInited = false;
 let folderIds: Record<string, string> = {};
 let isSyncing = false;
 let isInitialized = false;
+let tokenRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Add cache for folder creation to prevent race conditions
 let folderCreationCache = new Map<string, Promise<string>>();
 let folderIdCache = new Map<string, string>();
 
+// Persist selected Drive folder IDs to avoid flipping between duplicates
+const FOLDER_IDS_STORAGE_KEY = 'google-drive-folder-ids';
+
+function loadPersistedFolderIds(): Record<string, string> {
+    try {
+        const raw = typeof window !== 'undefined' ? localStorage.getItem(FOLDER_IDS_STORAGE_KEY) : null;
+        return raw ? JSON.parse(raw) : {};
+    } catch {
+        return {};
+    }
+}
+
+function savePersistedFolderIds(ids: Record<string, string>): void {
+    try {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(FOLDER_IDS_STORAGE_KEY, JSON.stringify(ids));
+        }
+    } catch {
+        // ignore
+    }
+}
+
 // --- Initialization and Authentication ---
 
 export function isGoogleDriveSupported(): boolean {
-    return typeof window !== 'undefined' && !!CLIENT_ID && !!API_KEY;
+    return typeof window !== 'undefined' && !!API_KEY;
 }
 
 export async function isGoogleDriveAuthenticated(): Promise<boolean> {
@@ -127,6 +155,35 @@ export function loadGoogleIdentityScript(): Promise<void> {
     });
 }
 
+/**
+ * Schedule automatic token refresh before expiration
+ */
+function scheduleTokenRefresh() {
+    // Clear existing timer
+    if (tokenRefreshTimer) {
+        clearTimeout(tokenRefreshTimer);
+        tokenRefreshTimer = null;
+    }
+
+    const token = gapi.client.getToken() as any;
+    if (!token || !token.expires_in) {
+        return;
+    }
+
+    // Refresh 5 minutes before expiration (token expires in 3600 seconds = 1 hour)
+    const refreshTime = (token.expires_in - 300) * 1000; // Convert to milliseconds, refresh 5 min early
+    
+    console.log(`🔄 Token will auto-refresh in ${Math.round(refreshTime / 1000 / 60)} minutes`);
+    
+    tokenRefreshTimer = setTimeout(() => {
+        console.log('🔄 Auto-refreshing token...');
+        if (tokenClient) {
+            // Request new token silently (no prompt)
+            tokenClient.requestAccessToken({ prompt: '' });
+        }
+    }, refreshTime);
+}
+
 async function handleAuthCallback(resp: any) {
     if (resp.error) {
         console.error('Auth error:', resp);
@@ -135,6 +192,10 @@ async function handleAuthCallback(resp: any) {
     
     try {
         localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, JSON.stringify(gapi.client.getToken()));
+        
+        // Schedule automatic token refresh
+        scheduleTokenRefresh();
+        
         await initializeDirectoryStructure();
         console.log('Google Drive authentication successful');
     } catch (error) {
@@ -148,10 +209,13 @@ export async function initializeGoogleDriveApi(): Promise<boolean> {
     try {
         await Promise.all([loadGoogleApiScript(), loadGoogleIdentityScript()]);
 
+        // Initialize Google API client with discovery document
         await gapi.client.init({
             apiKey: API_KEY,
             discoveryDocs: [DISCOVERY_DOC],
         });
+        
+        console.log('Google API client initialized successfully with discovery document');
 
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
@@ -164,6 +228,8 @@ export async function initializeGoogleDriveApi(): Promise<boolean> {
             try {
                 gapi.client.setToken(JSON.parse(savedToken));
                 if (await verifyToken()) {
+                    // Schedule token refresh for restored token
+                    scheduleTokenRefresh();
                     await initializeDirectoryStructure();
                 }
             } catch (error) {
@@ -218,6 +284,12 @@ export function requestGoogleDriveAuthorization(): Promise<void> {
 export function signOutGoogleDrive(): Promise<void> {
     return new Promise((resolve) => {
         try {
+            // Clear token refresh timer
+            if (tokenRefreshTimer) {
+                clearTimeout(tokenRefreshTimer);
+                tokenRefreshTimer = null;
+            }
+            
             const token = gapi.client.getToken();
             if (token !== null) {
                 try {
@@ -257,7 +329,7 @@ function sanitizeFilename(name: string): string {
 /**
  * Generate proper filename based on item type and content
  */
-function generateFilename(item: any, itemType: 'invoice' | 'customer' | 'product' | 'company'): string {
+function generateFilename(item: any, itemType: 'invoice' | 'customer' | 'product' | 'company' | 'taxSettings'): string {
     switch (itemType) {
         case 'invoice':
             // For invoices, use just the invoice number (001.json, 002.json, etc.)
@@ -282,10 +354,57 @@ function generateFilename(item: any, itemType: 'invoice' | 'customer' | 'product
         case 'company':
             return 'company_info.json';
         
+        case 'taxSettings':
+            return 'personal_tax_settings.json';
+        
         default:
             // Fallback to ID-based naming
             return `${item.id}.json`;
     }
+}
+
+// Deeply remove volatile fields that should not affect comparisons
+function stripVolatileFieldsDeep(obj: any): any {
+    if (obj === null || obj === undefined) return obj;
+    if (Array.isArray(obj)) return obj.map(stripVolatileFieldsDeep);
+    if (typeof obj === 'object') {
+        const result: any = {};
+        for (const key of Object.keys(obj)) {
+            if (key === 'lastModified' || key === 'syncStatus' || key === 'updatedAt' || key === 'createdAt') continue;
+            result[key] = stripVolatileFieldsDeep(obj[key]);
+        }
+        return result;
+    }
+    return obj;
+}
+
+// Deterministic stringify to compare content independent of key order
+function deterministicStringify(obj: any): string {
+    if (obj === null || obj === undefined) return JSON.stringify(obj);
+    if (Array.isArray(obj)) return '[' + obj.map(deterministicStringify).join(',') + ']';
+    if (typeof obj === 'object') {
+        const keys = Object.keys(obj).sort();
+        const body = keys.map(k => `"${k}":${deterministicStringify(obj[k])}`).join(',');
+        return '{' + body + '}';
+    }
+    return JSON.stringify(obj);
+}
+
+function areItemsEqualIgnoringVolatileFields(a: any, b: any): boolean {
+    const cleanA = deterministicStringify(stripVolatileFieldsDeep(a));
+    const cleanB = deterministicStringify(stripVolatileFieldsDeep(b));
+    return cleanA === cleanB;
+}
+
+// Parse Drive response when using alt='media' which may return body or result
+function parseDriveMediaResponse<T>(response: any): T {
+    if (response && typeof response.body === 'string') {
+        return JSON.parse(response.body) as T;
+    }
+    if (response && typeof response.result === 'string') {
+        return JSON.parse(response.result) as T;
+    }
+    return (response?.result as T);
 }
 
 async function findOrCreateFolder(name: string, parentId?: string): Promise<string> {
@@ -411,21 +530,61 @@ async function cleanupDuplicateFolders(folders: any[], keepFolderId: string): Pr
     }
 }
 
-async function initializeDirectoryStructure(): Promise<void> {
+// Track if directory structure has been initialized in this session
+let isDirectoryInitialized = false;
+
+async function initializeDirectoryStructure(force: boolean = false): Promise<void> {
+    // Skip if already initialized (unless forced)
+    if (isDirectoryInitialized && !force) {
+        return;
+    }
+    
     try {
         // Clear caches to ensure fresh initialization
         folderCreationCache.clear();
+        // Load persisted IDs first to avoid flipping between duplicate folders
+        const persisted = loadPersistedFolderIds();
         folderIdCache.clear();
         
-        const appFolderId = await findOrCreateFolder(APP_FOLDER_NAME);
+        // Prefer persisted app folder ID if available
+        let appFolderId = persisted[APP_FOLDER_NAME];
+        if (appFolderId) {
+            try {
+                await gapi.client.drive.files.get({ fileId: appFolderId, fields: 'id' });
+            } catch {
+                appFolderId = await findOrCreateFolder(APP_FOLDER_NAME);
+            }
+        } else {
+            appFolderId = await findOrCreateFolder(APP_FOLDER_NAME);
+        }
         folderIds[APP_FOLDER_NAME] = appFolderId;
         
-        // Create subdirectories
-        folderIds[CUSTOMERS_DIRECTORY] = await findOrCreateFolder(CUSTOMERS_DIRECTORY, appFolderId);
-        folderIds[PRODUCTS_DIRECTORY] = await findOrCreateFolder(PRODUCTS_DIRECTORY, appFolderId);
-        folderIds[INVOICES_DIRECTORY] = await findOrCreateFolder(INVOICES_DIRECTORY, appFolderId);
+        // Create subdirectories (prefer persisted IDs if valid)
+        for (const dirName of [CUSTOMERS_DIRECTORY, PRODUCTS_DIRECTORY, INVOICES_DIRECTORY, TIMESHEETS_DIRECTORY]) {
+            let id = persisted[dirName];
+            if (id) {
+                try {
+                    await gapi.client.drive.files.get({ fileId: id, fields: 'id' });
+                    folderIds[dirName] = id;
+                    continue;
+                } catch {
+                    // fall through to create/find
+                }
+            }
+            folderIds[dirName] = await findOrCreateFolder(dirName, appFolderId);
+        }
+
+        // Persist selected IDs so future runs use the same folders
+        savePersistedFolderIds({
+            [APP_FOLDER_NAME]: folderIds[APP_FOLDER_NAME],
+            [CUSTOMERS_DIRECTORY]: folderIds[CUSTOMERS_DIRECTORY],
+            [PRODUCTS_DIRECTORY]: folderIds[PRODUCTS_DIRECTORY],
+            [INVOICES_DIRECTORY]: folderIds[INVOICES_DIRECTORY],
+            [TIMESHEETS_DIRECTORY]: folderIds[TIMESHEETS_DIRECTORY],
+        });
         
-        console.log('Google Drive directory structure initialized');
+        isDirectoryInitialized = true;
+        console.log('✅ Google Drive folders ready');
     } catch (error) {
         console.error('Failed to initialize directory structure:', error);
         throw error;
@@ -439,7 +598,7 @@ async function getDriveFiles<T extends { id: string }>(parentFolderId: string): 
 
     try {
         do {
-            const response = await gapi.client.drive.files.list({
+            const response: any = await gapi.client.drive.files.list({
                 q: `'${parentFolderId}' in parents and mimeType='application/json' and trashed=false`,
                 fields: 'nextPageToken, files(id, name, modifiedTime)',
                 pageSize: 100,
@@ -448,13 +607,16 @@ async function getDriveFiles<T extends { id: string }>(parentFolderId: string): 
 
             if (!response.result.files) continue;
 
-            const filePromises = response.result.files.map(async (file) => {
+            const filePromises = response.result.files.map(async (file: any) => {
                 try {
-                    const content = await gapi.client.drive.files.get({ 
+                    const content: any = await gapi.client.drive.files.get({ 
                         fileId: file.id!, 
                         alt: 'media' 
                     });
-                    const data = JSON.parse(content.result as string) as T;
+                    
+                    // The response body is in content.body when using alt='media'
+                    const data = parseDriveMediaResponse<T>(content);
+                    
                     if (data && data.id) {
                         filesMap.set(data.id, { 
                             fileId: file.id!, 
@@ -478,7 +640,7 @@ async function getDriveFiles<T extends { id: string }>(parentFolderId: string): 
     return filesMap;
 }
 
-async function uploadFile(folderId: string, item: { id: string } & any, existingFileId?: string, retryCount = 0, itemType: 'invoice' | 'customer' | 'product' | 'company' = 'invoice'): Promise<void> {
+async function uploadFile(folderId: string, item: { id: string } & any, existingFileId?: string, retryCount = 0, itemType: 'invoice' | 'customer' | 'product' | 'company' | 'taxSettings' = 'invoice'): Promise<boolean> {
     const maxRetries = 3;
     const filename = generateFilename(item, itemType);
     
@@ -511,6 +673,20 @@ async function uploadFile(folderId: string, item: { id: string } & any, existing
                 } else {
                     throw error;
                 }
+            }
+        }
+
+        // If the file exists, compare its current content with local ignoring volatile fields; skip if unchanged
+        if (existingFileId) {
+            try {
+                const contentResp: any = await gapi.client.drive.files.get({ fileId: existingFileId, alt: 'media' });
+                const remoteData: any = parseDriveMediaResponse<any>(contentResp);
+                if (areItemsEqualIgnoringVolatileFields(item, remoteData)) {
+                    // Quiet: unchanged, skip upload
+                    return false;
+                }
+            } catch (e) {
+                console.warn(`Failed to compare remote content for ${filename}; proceeding with upload`, e);
             }
         }
 
@@ -564,7 +740,8 @@ async function uploadFile(folderId: string, item: { id: string } & any, existing
             throw new Error(`Upload failed: ${response.status} - ${errorMessage}`);
         }
         
-        console.log(`Successfully uploaded ${filename}`);
+        // Silently succeed (verbose logging adds overhead)
+        return true;
     } catch (error: any) {
         if (retryCount < maxRetries && (error?.message?.includes('network') || error?.name === 'NetworkError')) {
             console.log(`Retrying upload for ${filename} (attempt ${retryCount + 1}/${maxRetries})`);
@@ -609,6 +786,46 @@ async function findFileByName(fileName: string, parentFolderId: string): Promise
     }
 }
 
+// Look for an invoice JSON file by filename across all year subfolders
+async function findInvoiceFileByNameAcrossYears(fileName: string): Promise<{ fileId: string; modifiedTime: string } | null> {
+    try {
+        const invoicesRootId = folderIds[INVOICES_DIRECTORY];
+        if (!invoicesRootId) return null;
+
+        const foldersResp: any = await gapi.client.drive.files.list({
+            q: `'${invoicesRootId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            fields: 'files(id,name)',
+            pageSize: 200
+        });
+
+        const yearFolders = foldersResp.result.files || [];
+        if (yearFolders.length === 0) return null;
+
+        const queries = yearFolders.map((folder: any) => gapi.client.drive.files.list({
+            q: `name='${fileName}' and '${folder.id}' in parents and trashed=false`,
+            fields: 'files(id, modifiedTime)',
+            pageSize: 1
+        }));
+
+        const results = await Promise.allSettled(queries);
+        let best: { fileId: string; modifiedTime: string } | null = null;
+        for (const res of results) {
+            if (res.status !== 'fulfilled') continue;
+            const files = (res.value as any).result.files || [];
+            const file = files[0];
+            if (!file) continue;
+            if (!best || new Date(file.modifiedTime!).getTime() > new Date(best.modifiedTime).getTime()) {
+                best = { fileId: file.id!, modifiedTime: file.modifiedTime! };
+            }
+        }
+
+        return best;
+    } catch (error) {
+        console.error('Error searching invoices across years:', error);
+        return null;
+    }
+}
+
 async function findFileById(itemId: string, folderId: string): Promise<{ fileId: string; } | null> {
     // Legacy: Try to find by old UUID-based naming first
     const legacyFilename = `${itemId}.json`;
@@ -622,9 +839,17 @@ async function findFileById(itemId: string, folderId: string): Promise<{ fileId:
 async function findFileByItem(item: any, folderId: string, itemType: 'invoice' | 'customer' | 'product' | 'company'): Promise<{ fileId: string; } | null> {
     // First try to find by new naming scheme
     const newFilename = generateFilename(item, itemType);
-    const newResult = await findFileByName(newFilename, folderId);
-    if (newResult) {
-        return newResult;
+
+    if (itemType === 'invoice') {
+        const acrossYears = await findInvoiceFileByNameAcrossYears(newFilename);
+        if (acrossYears) {
+            return { fileId: acrossYears.fileId };
+        }
+    } else {
+        const newResult = await findFileByName(newFilename, folderId);
+        if (newResult) {
+            return newResult;
+        }
     }
     
     // If not found, try legacy UUID-based naming for backwards compatibility
@@ -685,21 +910,21 @@ export async function backupAllDataToDrive(onProgress?: (progress: { current: nu
 
         // Upload company info
         if (companyInfo) {
-            uploadPromises.push(uploadCompanyInfo(companyInfo, reportProgress));
+            uploadPromises.push(uploadCompanyInfo(companyInfo, reportProgress).then(() => {}));
         }
 
         // Upload customers and track for deletion
         const localCustomerIds = new Set<string>();
         activeCustomers.forEach(customer => {
             localCustomerIds.add(customer.id);
-            uploadPromises.push(uploadCustomer(customer, reportProgress));
+            uploadPromises.push(uploadCustomer(customer, reportProgress).then(() => {}));
         });
 
         // Upload products and track for deletion
         const localProductIds = new Set<string>();
         activeProducts.forEach(product => {
             localProductIds.add(product.id);
-            uploadPromises.push(uploadProduct(product, reportProgress));
+            uploadPromises.push(uploadProduct(product, reportProgress).then(() => {}));
         });
 
         // Upload invoices and track for deletion - group by year to reduce folder creation race conditions
@@ -723,7 +948,7 @@ export async function backupAllDataToDrive(onProgress?: (progress: { current: nu
             
             // Upload all invoices for this year
             yearInvoices.forEach(invoice => {
-                uploadPromises.push(uploadInvoiceToYearFolder(invoice, yearFolderId, reportProgress));
+                uploadPromises.push(uploadInvoiceToYearFolder(invoice, yearFolderId, reportProgress).then(() => {}));
             });
         }
 
@@ -783,48 +1008,149 @@ export async function backupAllDataToDrive(onProgress?: (progress: { current: nu
 }
 
 // Helper functions for uploads
-async function uploadCompanyInfo(companyInfo: CompanyInfo, reportProgress: () => void): Promise<void> {
+async function uploadCompanyInfo(companyInfo: CompanyInfo, reportProgress: () => void): Promise<boolean> {
     try {
         const existing = await findFileByName(COMPANY_INFO_FILENAME, folderIds[APP_FOLDER_NAME]);
-        await uploadFile(folderIds[APP_FOLDER_NAME], { ...companyInfo, id: 'company_info' }, existing?.fileId, 0, 'company');
+        return await uploadFile(folderIds[APP_FOLDER_NAME], { ...companyInfo, id: 'company_info' }, existing?.fileId, 0, 'company');
     } finally {
         reportProgress(); // Always report progress even if upload fails
     }
 }
 
-async function uploadCustomer(customer: CustomerData, reportProgress: () => void): Promise<void> {
+async function uploadTaxSettings(taxSettings: any, reportProgress: () => void): Promise<boolean> {
+    try {
+        const existing = await findFileByName(TAX_SETTINGS_FILENAME, folderIds[APP_FOLDER_NAME]);
+        return await uploadFile(folderIds[APP_FOLDER_NAME], { ...taxSettings, id: 'personal_tax_settings' }, existing?.fileId, 0, 'taxSettings');
+    } finally {
+        reportProgress(); // Always report progress even if upload fails
+    }
+}
+
+/**
+ * Upload a single timesheet directly to Drive (called when saving a timesheet)
+ */
+export async function uploadTimesheetToDrive(
+    customerName: string,
+    year: number,
+    month: number,
+    fileHandle: FileSystemFileHandle
+): Promise<boolean> {
+    isSyncing = true;
+    try {
+        await initializeDirectoryStructure();
+        return await uploadTimesheet({ customerName, year, month, fileHandle }, () => {});
+    } finally {
+        isSyncing = false;
+    }
+}
+
+async function uploadTimesheet(
+    timesheet: { customerName: string; year: number; month: number; fileHandle: FileSystemFileHandle },
+    reportProgress: () => void
+): Promise<boolean> {
+    try {
+        const { customerName, year, month, fileHandle } = timesheet;
+        
+        // Create folder structure: timesheets/<customerName>/<year>/
+        const customerFolderId = await findOrCreateFolder(customerName, folderIds[TIMESHEETS_DIRECTORY]);
+        const yearFolderId = await findOrCreateFolder(year.toString(), customerFolderId);
+        
+        // Read the Excel file
+        const file = await fileHandle.getFile();
+        const arrayBuffer = await file.arrayBuffer();
+        
+        // Generate filename (matches local format)
+        const filename = `${customerName}_${year}_${String(month).padStart(2, '0')}.xlsx`;
+        
+        // Check if file already exists
+        const existingFile = await findFileByName(filename, yearFolderId);
+        
+        // Upload as binary (Excel file)
+        // Note: parents field is only allowed for POST (create), not PATCH (update)
+        const metadata = existingFile 
+            ? {
+                name: filename,
+                mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            }
+            : {
+                name: filename,
+                mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                parents: [yearFolderId],
+            };
+        
+        const form = new FormData();
+        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+        form.append('file', new Blob([arrayBuffer], { 
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        }));
+        
+        const method = existingFile ? 'PATCH' : 'POST';
+        const url = existingFile 
+            ? `https://www.googleapis.com/upload/drive/v3/files/${existingFile.fileId}?uploadType=multipart`
+            : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+        
+        const token = gapi.client.getToken();
+        if (!token) {
+            console.error('No auth token available');
+            return false;
+        }
+        
+        const response = await fetch(url, {
+            method,
+            headers: {
+                'Authorization': `Bearer ${token.access_token}`,
+            },
+            body: form,
+        });
+        
+        if (!response.ok) {
+            console.error(`Failed to upload timesheet ${filename}:`, await response.text());
+            return false;
+        }
+        
+        console.log(`✅ Uploaded timesheet: ${filename}`);
+        return true;
+    } catch (error) {
+        console.error('Error uploading timesheet:', error);
+        return false;
+    } finally {
+        reportProgress();
+    }
+}
+
+async function uploadCustomer(customer: CustomerData, reportProgress: () => void): Promise<boolean> {
     try {
         const existing = await findFileByItem(customer, folderIds[CUSTOMERS_DIRECTORY], 'customer');
-        await uploadFile(folderIds[CUSTOMERS_DIRECTORY], customer, existing?.fileId, 0, 'customer');
+        return await uploadFile(folderIds[CUSTOMERS_DIRECTORY], customer, existing?.fileId, 0, 'customer');
     } finally {
         reportProgress(); // Always report progress even if upload fails
     }
 }
 
-async function uploadProduct(product: ProductData, reportProgress: () => void): Promise<void> {
+async function uploadProduct(product: ProductData, reportProgress: () => void): Promise<boolean> {
     try {
         const existing = await findFileByItem(product, folderIds[PRODUCTS_DIRECTORY], 'product');
-        await uploadFile(folderIds[PRODUCTS_DIRECTORY], product, existing?.fileId, 0, 'product');
+        return await uploadFile(folderIds[PRODUCTS_DIRECTORY], product, existing?.fileId, 0, 'product');
     } finally {
         reportProgress(); // Always report progress even if upload fails
     }
 }
 
-async function uploadInvoice(invoice: Invoice, reportProgress: () => void): Promise<void> {
+async function uploadInvoice(invoice: Invoice, reportProgress: () => void): Promise<boolean> {
     try {
         const year = new Date(invoice.invoice_date).getFullYear().toString();
         const yearFolderId = await findOrCreateFolder(year, folderIds[INVOICES_DIRECTORY]);
         const existing = await findFileByItem(invoice, yearFolderId, 'invoice');
-        await uploadFile(yearFolderId, invoice, existing?.fileId, 0, 'invoice');
+        return await uploadFile(yearFolderId, invoice, existing?.fileId, 0, 'invoice');
     } finally {
         reportProgress(); // Always report progress even if upload fails
     }
 }
 
-async function uploadInvoiceToYearFolder(invoice: Invoice, yearFolderId: string, reportProgress: () => void): Promise<void> {
+async function uploadInvoiceToYearFolder(invoice: Invoice, yearFolderId: string, reportProgress: () => void): Promise<boolean> {
     try {
         const existing = await findFileByItem(invoice, yearFolderId, 'invoice');
-        await uploadFile(yearFolderId, invoice, existing?.fileId, 0, 'invoice');
+        return await uploadFile(yearFolderId, invoice, existing?.fileId, 0, 'invoice');
     } finally {
         reportProgress(); // Always report progress even if upload fails
     }
@@ -920,34 +1246,75 @@ export async function cleanupDuplicateFoldersManually(): Promise<void> {
     }
 }
 
-// Legacy functions for compatibility - these now just trigger a full sync
+// Individual file upload functions - called immediately after local save
+// This provides instant upload without waiting for periodic sync
 export async function saveCustomerToGoogleDrive(customer: CustomerData): Promise<void> {
     if (!await isGoogleDriveAuthenticated()) return;
     
+    isSyncing = true;
     try {
+        await initializeDirectoryStructure();
         await uploadCustomer(customer, () => {});
     } catch (error) {
         console.error('Error saving customer to Google Drive:', error);
+    } finally {
+        isSyncing = false;
     }
 }
 
 export async function saveProductToGoogleDrive(product: ProductData): Promise<void> {
     if (!await isGoogleDriveAuthenticated()) return;
     
+    isSyncing = true;
     try {
+        await initializeDirectoryStructure();
         await uploadProduct(product, () => {});
     } catch (error) {
         console.error('Error saving product to Google Drive:', error);
+    } finally {
+        isSyncing = false;
     }
 }
 
 export async function saveInvoiceToGoogleDrive(invoice: Invoice): Promise<void> {
     if (!await isGoogleDriveAuthenticated()) return;
     
+    isSyncing = true;
     try {
+        await initializeDirectoryStructure();
         await uploadInvoice(invoice, () => {});
     } catch (error) {
         console.error('Error saving invoice to Google Drive:', error);
+    } finally {
+        isSyncing = false;
+    }
+}
+
+export async function saveTaxSettingsToGoogleDrive(taxSettings: any): Promise<void> {
+    if (!await isGoogleDriveAuthenticated()) return;
+    
+    isSyncing = true;
+    try {
+        await initializeDirectoryStructure();
+        await uploadTaxSettings(taxSettings, () => {});
+    } catch (error) {
+        console.error('Error saving tax settings to Google Drive:', error);
+    } finally {
+        isSyncing = false;
+    }
+}
+
+export async function saveCompanyInfoToGoogleDrive(companyInfo: CompanyInfo): Promise<void> {
+    if (!await isGoogleDriveAuthenticated()) return;
+    
+    isSyncing = true;
+    try {
+        await initializeDirectoryStructure();
+        await uploadCompanyInfo(companyInfo, () => {});
+    } catch (error) {
+        console.error('Error saving company info to Google Drive:', error);
+    } finally {
+        isSyncing = false;
     }
 }
 
@@ -961,7 +1328,7 @@ export async function downloadAllDataFromDrive(): Promise<{
     customers: CustomerData[];
     products: ProductData[];
     companyInfo: CompanyInfo | null;
-    timesheets: any[];
+    timesheets: Array<{ customerName: string; year: number; month: number; blob: Blob; lastModified: string }>;
     taxSettings: any | null;
 }> {
     if (!await isGoogleDriveAuthenticated()) {
@@ -972,11 +1339,13 @@ export async function downloadAllDataFromDrive(): Promise<{
         await initializeDirectoryStructure();
 
         // Download all data in parallel
-        const [customers, products, invoices, companyInfo] = await Promise.all([
+        const [customers, products, invoices, companyInfo, taxSettings, timesheets] = await Promise.all([
             getDriveFiles<CustomerData>(folderIds[CUSTOMERS_DIRECTORY]),
             getDriveFiles<ProductData>(folderIds[PRODUCTS_DIRECTORY]),
             getDriveFilesFromAllYearFolders<Invoice>(folderIds[INVOICES_DIRECTORY]),
             downloadCompanyInfo(),
+            downloadTaxSettings(),
+            downloadAllTimesheets(),
         ]);
 
         // Convert maps to arrays and filter deleted items
@@ -995,8 +1364,8 @@ export async function downloadAllDataFromDrive(): Promise<{
             customers: customersList,
             products: productsList,
             companyInfo,
-            timesheets: [],
-            taxSettings: null,
+            timesheets,
+            taxSettings,
         };
     } catch (error) {
         console.error('Error downloading data from Google Drive:', error);
@@ -1014,16 +1383,165 @@ async function downloadCompanyInfo(): Promise<CompanyInfo | null> {
             return null;
         }
 
-        const content = await gapi.client.drive.files.get({
+        const content: any = await gapi.client.drive.files.get({
             fileId: file.fileId,
             alt: 'media',
         });
 
-        return JSON.parse(content.result as string) as CompanyInfo;
+        // Handle different response formats
+        const data = parseDriveMediaResponse<CompanyInfo>(content);
+        
+        return data;
     } catch (error) {
         console.error('Error downloading company info:', error);
         return null;
     }
+}
+
+/**
+ * Download tax settings from Drive
+ */
+async function downloadTaxSettings(): Promise<any | null> {
+    try {
+        const file = await findFileByName(TAX_SETTINGS_FILENAME, folderIds[APP_FOLDER_NAME]);
+        if (!file) {
+            return null;
+        }
+
+        const content: any = await gapi.client.drive.files.get({
+            fileId: file.fileId,
+            alt: 'media',
+        });
+
+        const data = parseDriveMediaResponse<any>(content);
+        return data;
+    } catch (error) {
+        console.error('Error downloading tax settings:', error);
+        return null;
+    }
+}
+
+/**
+ * Download all timesheets from Drive
+ * Returns array of { customerName, year, month, blob, lastModified }
+ */
+async function downloadAllTimesheets(): Promise<Array<{
+    customerName: string;
+    year: number;
+    month: number;
+    blob: Blob;
+    lastModified: string;
+}>> {
+    try {
+        const timesheetsFolderId = folderIds[TIMESHEETS_DIRECTORY];
+        if (!timesheetsFolderId) return [];
+
+        const result: Array<{ customerName: string; year: number; month: number; blob: Blob; lastModified: string }> = [];
+
+        // List all customer folders
+        const customerFolders = await listFolders(timesheetsFolderId);
+        
+        for (const customerFolder of customerFolders) {
+            const customerName = customerFolder.name;
+            
+            // List all year folders for this customer
+            const yearFolders = await listFolders(customerFolder.id);
+            
+            for (const yearFolder of yearFolders) {
+                const year = Number(yearFolder.name);
+                if (isNaN(year)) continue;
+                
+                // List all Excel files in this year folder
+                const files = await listFilesInFolder(yearFolder.id, '.xlsx');
+                
+                for (const file of files) {
+                    // Extract month from filename
+                    const parts = file.name.replace('.xlsx', '').split('_');
+                    const monthStr = parts[parts.length - 1];
+                    const month = Number(monthStr);
+                    
+                    if (!isNaN(month)) {
+                        // Download the Excel file as blob
+                        const response: any = await gapi.client.drive.files.get({
+                            fileId: file.id,
+                            alt: 'media',
+                        });
+                        
+                        // Convert response to Blob
+                        const blob = new Blob([response.body], { 
+                            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+                        });
+                        
+                        result.push({
+                            customerName,
+                            year,
+                            month,
+                            blob,
+                            lastModified: file.modifiedTime || new Date().toISOString(),
+                        });
+                    }
+                }
+            }
+        }
+
+        return result;
+    } catch (error) {
+        console.error('Error downloading timesheets:', error);
+        return [];
+    }
+}
+
+/**
+ * List all folders in a parent folder
+ */
+async function listFolders(parentFolderId: string): Promise<Array<{ id: string; name: string }>> {
+    try {
+        const response = await gapi.client.drive.files.list({
+            q: `'${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            fields: 'files(id, name)',
+            pageSize: 1000,
+        });
+        return response.result.files || [];
+    } catch (error) {
+        console.error('Error listing folders:', error);
+        return [];
+    }
+}
+
+/**
+ * List all files in a folder with optional extension filter
+ */
+async function listFilesInFolder(folderId: string, extension?: string): Promise<Array<{ id: string; name: string; modifiedTime: string }>> {
+    try {
+        let query = `'${folderId}' in parents and mimeType!='application/vnd.google-apps.folder' and trashed=false`;
+        if (extension) {
+            query += ` and name contains '${extension}'`;
+        }
+        
+        const response = await gapi.client.drive.files.list({
+            q: query,
+            fields: 'files(id, name, modifiedTime)',
+            pageSize: 1000,
+        });
+        const files = response.result.files || [];
+        // Ensure all files have modifiedTime
+        return files.map(f => ({
+            id: f.id || '',
+            name: f.name || '',
+            modifiedTime: f.modifiedTime || new Date().toISOString(),
+        }));
+    } catch (error) {
+        console.error('Error listing files:', error);
+        return [];
+    }
+}
+
+/**
+ * Strip syncStatus field from an entity before uploading
+ */
+function stripSyncStatus<T extends Record<string, any>>(entity: T): Omit<T, 'syncStatus'> {
+    const { syncStatus, ...cleanEntity } = entity;
+    return cleanEntity as Omit<T, 'syncStatus'>;
 }
 
 /**
@@ -1034,7 +1552,9 @@ export async function uploadAllDataToDrive(data: {
     customers: CustomerData[];
     products: ProductData[];
     companyInfo: CompanyInfo | null;
-}): Promise<void> {
+    taxSettings?: any | null;
+    timesheets?: Array<{ customerName: string; year: number; month: number; fileHandle: FileSystemFileHandle }>;
+}): Promise<number> {
     if (!await isGoogleDriveAuthenticated()) {
         throw new Error('Not authenticated with Google Drive');
     }
@@ -1042,24 +1562,33 @@ export async function uploadAllDataToDrive(data: {
     try {
         await initializeDirectoryStructure();
 
-        const uploadPromises: Promise<void>[] = [];
+        const uploadPromises: Promise<boolean>[] = [];
 
-        // Upload company info
+        // Upload company info (strip syncStatus)
         if (data.companyInfo) {
-            uploadPromises.push(uploadCompanyInfo(data.companyInfo, () => {}));
+            const cleanCompanyInfo = stripSyncStatus(data.companyInfo);
+            uploadPromises.push(uploadCompanyInfo(cleanCompanyInfo, () => {}));
         }
 
-        // Upload customers
+        // Upload tax settings (strip syncStatus)
+        if (data.taxSettings) {
+            const cleanTaxSettings = stripSyncStatus(data.taxSettings);
+            uploadPromises.push(uploadTaxSettings(cleanTaxSettings, () => {}));
+        }
+
+        // Upload customers (strip syncStatus)
         data.customers.forEach(customer => {
-            uploadPromises.push(uploadCustomer(customer, () => {}));
+            const cleanCustomer = stripSyncStatus(customer);
+            uploadPromises.push(uploadCustomer(cleanCustomer, () => {}));
         });
 
-        // Upload products
+        // Upload products (strip syncStatus)
         data.products.forEach(product => {
-            uploadPromises.push(uploadProduct(product, () => {}));
+            const cleanProduct = stripSyncStatus(product);
+            uploadPromises.push(uploadProduct(cleanProduct, () => {}));
         });
 
-        // Upload invoices grouped by year
+        // Upload invoices grouped by year (strip syncStatus)
         const invoicesByYear = new Map<string, Invoice[]>();
         data.invoices.forEach(invoice => {
             const year = new Date(invoice.invoice_date).getFullYear().toString();
@@ -1072,17 +1601,27 @@ export async function uploadAllDataToDrive(data: {
         for (const [year, yearInvoices] of invoicesByYear) {
             const yearFolderId = await findOrCreateFolder(year, folderIds[INVOICES_DIRECTORY]);
             yearInvoices.forEach(invoice => {
-                uploadPromises.push(uploadInvoiceToYearFolder(invoice, yearFolderId, () => {}));
+                const cleanInvoice = stripSyncStatus(invoice);
+                uploadPromises.push(uploadInvoiceToYearFolder(cleanInvoice, yearFolderId, () => {}));
             });
+        }
+
+        // Upload timesheets (Excel files)
+        if (data.timesheets && data.timesheets.length > 0) {
+            for (const timesheet of data.timesheets) {
+                uploadPromises.push(uploadTimesheet(timesheet, () => {}));
+            }
         }
 
         // Wait for all uploads with error handling
         const results = await Promise.allSettled(uploadPromises);
         const failed = results.filter(r => r.status === 'rejected');
+        const uploadedCount = results.reduce((acc, r) => acc + (r.status === 'fulfilled' && r.value ? 1 : 0), 0);
 
         if (failed.length > 0) {
             console.error(`${failed.length} uploads failed during sync`);
         }
+        return uploadedCount;
     } catch (error) {
         console.error('Error uploading data to Google Drive:', error);
         throw error;

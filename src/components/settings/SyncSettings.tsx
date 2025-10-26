@@ -6,9 +6,8 @@ import { Switch } from '../ui/switch';
 import { Label } from '../ui/label';
 import { Card } from '../ui/card';
 import { Alert, AlertDescription } from '../ui/alert';
-import { Loader2, RefreshCw, Cloud, CheckCircle2, AlertCircle, HardDrive } from 'lucide-react';
+import { Loader2, RefreshCw, Cloud, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useGoogleDrive } from '../../infrastructure/contexts/GoogleDriveContext';
-import { resetDataSourceSelection, getDataSource } from '../../infrastructure/sync/syncState';
 
 export default function SyncSettings() {
     const {
@@ -26,8 +25,6 @@ export default function SyncSettings() {
 
     const [isProcessing, setIsProcessing] = useState(false);
     const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
-
-    const dataSource = getDataSource();
 
     // ===== HANDLERS =====
 
@@ -85,14 +82,6 @@ export default function SyncSettings() {
         } finally {
             setIsProcessing(false);
         }
-    };
-
-    const handleResetDataSource = () => {
-        resetDataSourceSelection();
-        setStatusMessage({
-            type: 'info',
-            text: 'Data source selection reset. Reload the page to choose a new source.'
-        });
     };
 
     // ===== COMPUTED =====
@@ -220,40 +209,6 @@ export default function SyncSettings() {
                                 </div>
                             )}
                         </div>
-                    </div>
-                </Card>
-            )}
-
-            {/* Data Source */}
-            {isAuthenticated && (
-                <Card className="p-6">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                        <HardDrive className="h-5 w-5" />
-                        Data Source
-                    </h3>
-
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="font-medium">Current Source</p>
-                                <p className="text-sm text-muted-foreground">
-                                    {dataSource === 'local' && 'Local Files Only'}
-                                    {dataSource === 'drive' && 'Google Drive'}
-                                    {dataSource === 'merged' && 'Merged (Local + Drive)'}
-                                    {!dataSource && 'Not Selected'}
-                                </p>
-                            </div>
-                            <Button
-                                onClick={handleResetDataSource}
-                                variant="outline"
-                                size="sm"
-                            >
-                                Reset Data Source
-                            </Button>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                            Resetting will prompt you to choose your data source again on next page load.
-                        </p>
                     </div>
                 </Card>
             )}

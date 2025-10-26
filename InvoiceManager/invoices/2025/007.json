@@ -44,7 +44,7 @@
   },
   "is_paid": false,
   "lastModified": "2025-07-14T17:14:24.113Z",
+  "status": "cancelled",
   "isDeleted": false,
-  "isRectified": false,
-  "status": null
+  "isRectified": false
 }

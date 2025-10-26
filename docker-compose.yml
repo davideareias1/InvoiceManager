@@ -10,6 +10,8 @@ services:
       - no-new-privileges:true
     environment:
       - NODE_ENV=production
+      - NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY=AIzaSyAOm9uUvXLkLh3XiRbEY7Viq2-_-YlyAHA
+      - NEXT_PUBLIC_CLIENT_ID=1052428720970-hcfhot632mpvb4db86cqak4patqfd9ji.apps.googleusercontent.com
     networks:
       - traefik_web
     labels:

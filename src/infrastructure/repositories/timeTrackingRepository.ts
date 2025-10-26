@@ -3,6 +3,8 @@
 import { TimeEntry, TimeSheetMonth, TimeTrackingRepository } from '../../domain/models';
 import * as XLSX from 'xlsx';
 import { getSavedDirectoryHandle, verifyHandlePermission } from '../filesystem/fileSystemStorage';
+import { markDataDirty } from '../sync/syncState';
+import { uploadTimesheetToDrive } from '../google/googleDriveStorage';
 
 // Directory structure: timesheets/<sanitized-customer-name>/<year>/<customerName-year-month.xlsx>
 const TIMESHEETS_DIRECTORY = 'timesheets';
@@ -222,6 +224,16 @@ export const saveMonth = async (ts: TimeSheetMonth): Promise<TimeSheetMonth> => 
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     await writable.write(new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
     await writable.close();
+    
+    // Upload directly to Drive (don't wait for sync scheduler)
+    try {
+        await uploadTimesheetToDrive(ts.customerName, ts.year, ts.month, fileHandle);
+    } catch (error) {
+        console.error('Failed to upload timesheet to Drive:', error);
+        // Continue anyway - local save succeeded
+    }
+    
+    markDataDirty();
     return { ...ts, lastModified: new Date().toISOString() };
 };
 
@@ -285,6 +297,61 @@ export const listAvailableMonths = async (
     }
     // sort desc by year,month
     return result.sort((a, b) => b.year - a.year || b.month - a.month);
+};
+
+/**
+ * Load all timesheets from all customers
+ * Returns array of { customerName, year, month, fileHandle }
+ */
+export const loadAllTimesheets = async (): Promise<Array<{
+    customerName: string;
+    year: number;
+    month: number;
+    fileHandle: FileSystemFileHandle;
+}>> => {
+    try {
+        const root = await ensureRoot();
+        const timesheetsDir = await getOrCreateDirectory(root, TIMESHEETS_DIRECTORY);
+        const result: Array<{ customerName: string; year: number; month: number; fileHandle: FileSystemFileHandle }> = [];
+
+        // Iterate through customer directories
+        for await (const customerEntry of timesheetsDir.values()) {
+            if (customerEntry.kind === 'directory') {
+                const customerName = customerEntry.name;
+                const customerDir = await timesheetsDir.getDirectoryHandle(customerName);
+
+                // Iterate through year directories
+                for await (const yearEntry of customerDir.values()) {
+                    if (yearEntry.kind === 'directory') {
+                        const year = Number(yearEntry.name);
+                        if (isNaN(year)) continue;
+
+                        const yearDir = await customerDir.getDirectoryHandle(yearEntry.name);
+
+                        // Iterate through Excel files
+                        for await (const fileEntry of yearDir.values()) {
+                            if (fileEntry.kind === 'file' && fileEntry.name.endsWith('.xlsx')) {
+                                // Extract month from filename (e.g., "CustomerName_2025_09.xlsx")
+                                const parts = fileEntry.name.replace('.xlsx', '').split('_');
+                                const monthStr = parts[parts.length - 1];
+                                const month = Number(monthStr);
+                                
+                                if (!isNaN(month)) {
+                                    const fileHandle = await yearDir.getFileHandle(fileEntry.name);
+                                    result.push({ customerName, year, month, fileHandle });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return result;
+    } catch (error) {
+        console.error('Error loading all timesheets:', error);
+        return [];
+    }
 };
 
 export const timeTrackingRepositoryAdapter: TimeTrackingRepository = {

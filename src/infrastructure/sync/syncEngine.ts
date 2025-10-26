@@ -1,7 +1,7 @@
 'use client';
 
 import { SyncProgress, SyncResult, SyncConflict, SyncableData } from './types';
-import { updateSyncState, markSyncComplete, updateDataHash } from './syncState';
+import { markSyncComplete } from './syncState';
 import { isOnline } from './networkMonitor';
 import {
     isGoogleDriveAuthenticated,
@@ -17,7 +17,10 @@ import {
     saveCustomerToFile,
     saveProductToFile,
     saveCompanyInfoToFile,
+    loadPersonalTaxSettingsFromFile,
+    savePersonalTaxSettingsToFile,
 } from '../filesystem/fileSystemStorage';
+import { loadAllTimesheets } from '../repositories/timeTrackingRepository';
 import { Invoice, CustomerData, ProductData, CompanyInfo } from '../../domain/models';
 
 let isSyncing = false;
@@ -62,6 +65,7 @@ export async function syncWithDrive(
     isSyncing = true;
 
     try {
+        const startTime = Date.now();
         const conflicts: SyncConflict[] = [];
         let pulledCount = 0;
         let pushedCount = 0;
@@ -75,7 +79,9 @@ export async function syncWithDrive(
             message: 'Downloading data from Google Drive...',
         });
 
+        const downloadStart = Date.now();
         const remoteData = await downloadAllDataFromDrive();
+        const downloadTime = Date.now() - downloadStart;
         pulledCount = 
             remoteData.invoices.length +
             remoteData.customers.length +
@@ -111,13 +117,20 @@ export async function syncWithDrive(
             message: 'Uploading changes to Google Drive...',
         });
 
+        const saveStart = Date.now();
         await saveMergedData(mergeResult.data);
-        await uploadAllDataToDrive(mergeResult.data);
-        pushedCount = mergeResult.merged;
+        const saveTime = Date.now() - saveStart;
+        
+        const uploadStart = Date.now();
+        const actuallyUploaded = await uploadAllDataToDrive(mergeResult.data);
+        const uploadTime = Date.now() - uploadStart;
+        pushedCount = actuallyUploaded;
 
-        // Update sync state
-        updateDataHash(mergeResult.data);
+        // Mark sync complete and clear pending flag
         markSyncComplete();
+
+        const totalTime = Date.now() - startTime;
+        console.log(`⏱️ Sync timing: download=${downloadTime}ms, save=${saveTime}ms, upload=${uploadTime}ms, total=${totalTime}ms`);
 
         onProgress?.({
             current: 4,
@@ -205,24 +218,104 @@ export async function hasRemoteData(): Promise<boolean> {
 }
 
 /**
+ * Recursively ensure entity and all nested objects have required fields for sync
+ */
+function normalizeEntity<T extends Record<string, any>>(entity: T): T {
+    const normalized: any = { ...entity };
+    
+    // Ensure lastModified exists at top level (handle empty strings)
+    if (!normalized.lastModified || normalized.lastModified === '') {
+        // Use updatedAt if available, otherwise use current time
+        normalized.lastModified = normalized.updatedAt || new Date().toISOString();
+    }
+    
+    // Ensure isDeleted exists at top level
+    if (normalized.isDeleted === undefined) {
+        normalized.isDeleted = false;
+    }
+    
+    // Ensure isRectified exists for invoices
+    if (normalized.isRectified === undefined && normalized.invoice_number) {
+        normalized.isRectified = false;
+    }
+    
+    // Recursively normalize nested objects (like customer in invoice)
+    for (const key in normalized) {
+        const value = normalized[key];
+        
+        // Skip null, undefined, and primitive values
+        if (value === null || value === undefined || typeof value !== 'object') {
+            continue;
+        }
+        
+        // Handle arrays
+        if (Array.isArray(value)) {
+            normalized[key] = value.map(item => 
+                typeof item === 'object' && item !== null ? normalizeNestedObject(item) : item
+            );
+        } else {
+            // Handle nested objects
+            normalized[key] = normalizeNestedObject(value);
+        }
+    }
+    
+    return normalized;
+}
+
+/**
+ * Normalize a nested object (add lastModified if missing or empty)
+ */
+function normalizeNestedObject(obj: any): any {
+    if (!obj || typeof obj !== 'object') {
+        return obj;
+    }
+    
+    const normalized = { ...obj };
+    
+    // Add lastModified if it's missing, empty, or updatedAt exists
+    if ((!normalized.lastModified || normalized.lastModified === '') && normalized.updatedAt) {
+        normalized.lastModified = normalized.updatedAt;
+    }
+    
+    // Add isDeleted if missing
+    if (normalized.isDeleted === undefined && normalized.id) {
+        // Only add isDeleted if this looks like an entity (has an id)
+        normalized.isDeleted = false;
+    }
+    
+    return normalized;
+}
+
+/**
  * Load all local data
  */
 async function loadLocalData(): Promise<SyncableData> {
     try {
-        const [invoices, customers, products, companyInfo] = await Promise.all([
+        // Load JSON data (fast)
+        const [invoices, customers, products, companyInfo, taxSettings] = await Promise.all([
             loadInvoicesFromFiles(),
             loadCustomersFromFiles(),
             loadProductsFromFiles(),
             loadCompanyInfoFromFile(),
+            loadPersonalTaxSettingsFromFile(),
         ]);
 
+        // Normalize all entities to ensure they have required fields
+        const normalizedInvoices = invoices.map(normalizeEntity);
+        const normalizedCustomers = customers.map(normalizeEntity);
+        const normalizedProducts = products.map(normalizeEntity);
+        const normalizedCompanyInfo = companyInfo ? normalizeEntity(companyInfo) : null;
+        const normalizedTaxSettings = taxSettings ? normalizeEntity(taxSettings) : null;
+
+        // Skip timesheets loading during sync - they're Excel files and slow
+        // Timesheets are only uploaded when explicitly saved via timeTrackingRepository
         return {
-            invoices,
-            customers,
-            products,
-            companyInfo,
-            timesheets: [], // TODO: Add timesheet loading
-            taxSettings: null, // TODO: Add tax settings loading
+            invoices: normalizedInvoices,
+            customers: normalizedCustomers,
+            products: normalizedProducts,
+            companyInfo: normalizedCompanyInfo,
+            timesheets: [], // Don't load timesheets on every sync (performance optimization)
+            taxSettings: normalizedTaxSettings,
         };
     } catch (error) {
         console.error('Error loading local data:', error);
@@ -286,14 +379,20 @@ async function mergeData(
         mergedCount += 1;
     }
 
+    // Merge tax settings (single entity)
+    const taxSettings = mergeTaxSettings(local.taxSettings, remote.taxSettings, conflicts);
+    if (taxSettings && remote.taxSettings) {
+        mergedCount += 1;
+    }
+
     return {
         data: {
             invoices,
             customers,
             products,
             companyInfo,
-            timesheets: local.timesheets, // TODO: Implement timesheet merging
-            taxSettings: local.taxSettings, // TODO: Implement tax settings merging
+            timesheets: local.timesheets, // Keep local timesheets (Excel files uploaded as-is)
+            taxSettings,
         },
         merged: mergedCount,
     };
@@ -394,36 +493,94 @@ function mergeCompanyInfo(
 }
 
 /**
+ * Merge tax settings (single entity)
+ */
+function mergeTaxSettings(
+    local: any | null,
+    remote: any | null,
+    conflicts: SyncConflict[]
+): any | null {
+    if (!local && !remote) return null;
+    if (!local) return { ...remote!, syncStatus: 'synced' as const };
+    if (!remote) return { ...local, syncStatus: 'synced' as const };
+
+    // Both exist - use last-write-wins
+    const localTime = new Date(local.lastModified).getTime();
+    const remoteTime = new Date(remote.lastModified).getTime();
+
+    if (remoteTime > localTime) {
+        conflicts.push({
+            entityType: 'taxSettings',
+            entityId: 'personal_tax_settings',
+            localTimestamp: local.lastModified,
+            remoteTimestamp: remote.lastModified,
+            resolution: 'remote',
+        });
+        return { ...remote, syncStatus: 'synced' as const };
+    } else if (localTime > remoteTime) {
+        conflicts.push({
+            entityType: 'taxSettings',
+            entityId: 'personal_tax_settings',
+            localTimestamp: local.lastModified,
+            remoteTimestamp: remote.lastModified,
+            resolution: 'local',
+        });
+    }
+
+    return { ...local, syncStatus: 'synced' as const };
+}
+
+/**
+ * Remove syncStatus from an entity before saving
+ */
+function cleanEntityForSave<T extends Record<string, any>>(entity: T): Omit<T, 'syncStatus'> {
+    const { syncStatus, ...cleanEntity } = entity;
+    return cleanEntity as Omit<T, 'syncStatus'>;
+}
+
+/**
  * Save merged data to local file system
  */
 async function saveMergedData(data: SyncableData): Promise<void> {
     const savePromises: Promise<any>[] = [];
 
-    // Save invoices
+    // Save invoices (strip syncStatus field)
     data.invoices.forEach(invoice => {
-        savePromises.push(saveInvoiceToFile(invoice).catch(error => {
+        const cleanInvoice = cleanEntityForSave(invoice) as unknown as Invoice;
+        savePromises.push(saveInvoiceToFile(cleanInvoice).catch(error => {
             console.error(`Failed to save invoice ${invoice.id}:`, error);
         }));
     });
 
-    // Save customers
+    // Save customers (strip syncStatus field)
     data.customers.forEach(customer => {
-        savePromises.push(saveCustomerToFile(customer).catch(error => {
+        const cleanCustomer = cleanEntityForSave(customer) as unknown as CustomerData;
+        savePromises.push(saveCustomerToFile(cleanCustomer).catch(error => {
             console.error(`Failed to save customer ${customer.id}:`, error);
         }));
     });
 
-    // Save products
+    // Save products (strip syncStatus field)
     data.products.forEach(product => {
-        savePromises.push(saveProductToFile(product).catch(error => {
+        const cleanProduct = cleanEntityForSave(product) as unknown as ProductData;
+        savePromises.push(saveProductToFile(cleanProduct).catch(error => {
             console.error(`Failed to save product ${product.id}:`, error);
         }));
     });
 
-    // Save company info
+    // Save company info (strip syncStatus field)
     if (data.companyInfo) {
-        savePromises.push(saveCompanyInfoToFile(data.companyInfo).catch(error => {
+        const cleanCompanyInfo = cleanEntityForSave(data.companyInfo) as unknown as CompanyInfo;
+        savePromises.push(saveCompanyInfoToFile(cleanCompanyInfo).catch(error => {
             console.error('Failed to save company info:', error);
+        }));
+    }
+
+    // Save tax settings (strip syncStatus field)
+    if (data.taxSettings) {
+        const cleanTaxSettings = cleanEntityForSave(data.taxSettings);
+        savePromises.push(savePersonalTaxSettingsToFile(cleanTaxSettings).catch(error => {
+            console.error('Failed to save tax settings:', error);
         }));
     }
 

@@ -7,6 +7,7 @@ import { saveInvoiceToGoogleDrive } from '../google/googleDriveStorage';
 import { format, addDays } from 'date-fns';
 import { formatDate } from '../../shared/formatters';
 import { isOnline } from '../sync/networkMonitor';
+import { markDataDirty } from '../sync/syncState';
 
 // Global variable to cache directory handle and invoices
 let directoryHandle: FileSystemDirectoryHandle | null = null;
@@ -132,6 +133,7 @@ export const saveInvoice = async (invoice: Partial<Invoice>): Promise<Invoice> =
 
         await saveInvoiceToFile(updatedInvoice);
         await saveInvoiceToGoogleDrive(updatedInvoice);
+        markDataDirty();
 
         return updatedInvoice;
     } catch (error) {
@@ -166,6 +168,7 @@ export const deleteInvoice = async (id: string): Promise<boolean> => {
         // Save the updated invoice (marked as deleted)
         await saveInvoiceToFile(deletedInvoice);
         await saveInvoiceToGoogleDrive(deletedInvoice);
+        markDataDirty();
 
         // Recalculate the counter since we might have deleted a high-numbered invoice
         updateNextInvoiceNumber();

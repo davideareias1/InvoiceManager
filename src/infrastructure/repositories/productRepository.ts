@@ -5,6 +5,7 @@ import { ProductData, ProductRepository } from '../../domain/models';
 import { saveProductToFile, loadProductsFromFiles, deleteProductFile } from '../filesystem/fileSystemStorage';
 import { saveProductToGoogleDrive } from '../google/googleDriveStorage';
 import { isOnline } from '../sync/networkMonitor';
+import { markDataDirty } from '../sync/syncState';
 
 // Global variable to cache directory handle and products
 let directoryHandle: FileSystemDirectoryHandle | null = null;
@@ -83,6 +84,7 @@ export async function saveProduct(product: Partial<ProductData>): Promise<Produc
         // Save to local file system and Google Drive
         await saveProductToFile(updatedProduct);
         await saveProductToGoogleDrive(updatedProduct);
+        markDataDirty();
 
         return updatedProduct;
     } catch (error) {
@@ -118,6 +120,7 @@ export async function deleteProduct(id: string): Promise<boolean> {
         // Save the updated product (with isDeleted flag) to propagate the change
         await saveProductToFile(productToDelete);
         await saveProductToGoogleDrive(productToDelete);
+        markDataDirty();
 
         // Filter out from active cache
         cachedProducts = cachedProducts.filter(p => p.id !== id);

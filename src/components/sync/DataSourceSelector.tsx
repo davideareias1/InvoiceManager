@@ -14,11 +14,12 @@ import { Alert, AlertDescription } from '../ui/alert';
 import { Loader2, Cloud, HardDrive, Merge } from 'lucide-react';
 import { setDataSource, isDataSourceSelected } from '../../infrastructure/sync/syncState';
 import { restoreFromDrive, hasRemoteData } from '../../infrastructure/sync/syncEngine';
-import { isGoogleDriveAuthenticated } from '../../infrastructure/google/googleDriveStorage';
+import { isGoogleDriveAuthenticated, uploadAllDataToDrive } from '../../infrastructure/google/googleDriveStorage';
 import {
     loadInvoicesFromFiles,
     loadCustomersFromFiles,
     loadProductsFromFiles,
+    loadCompanyInfoFromFile,
 } from '../../infrastructure/filesystem/fileSystemStorage';
 
 // ===== TYPES =====
@@ -88,9 +89,39 @@ export function DataSourceSelector({ onDataSourceSelected }: DataSourceSelectorP
     }
 
     async function handleSelectLocal() {
-        setDataSource('local');
-        setIsOpen(false);
-        onDataSourceSelected('local');
+        setIsLoading(true);
+        setError(null);
+        
+        try {
+            setDataSource('local');
+            
+            // If authenticated, upload local data to Google Drive
+            if (isAuthenticated && hasLocalData) {
+                console.log('Uploading local data to Google Drive...');
+                const [invoices, customers, products, companyInfo] = await Promise.all([
+                    loadInvoicesFromFiles().catch(() => []),
+                    loadCustomersFromFiles().catch(() => []),
+                    loadProductsFromFiles().catch(() => []),
+                    loadCompanyInfoFromFile().catch(() => null),
+                ]);
+                
+                await uploadAllDataToDrive({
+                    invoices,
+                    customers,
+                    products,
+                    companyInfo,
+                });
+                console.log('Initial data upload to Google Drive completed');
+            }
+            
+            setIsOpen(false);
+            onDataSourceSelected('local');
+        } catch (err) {
+            console.error('Error selecting local data source:', err);
+            setError('Failed to upload local data to Google Drive');
+        } finally {
+            setIsLoading(false);
+        }
     }
 
     async function handleSelectDrive() {

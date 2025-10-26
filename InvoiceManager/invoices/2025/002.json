@@ -22,7 +22,9 @@
     "number": "",
     "id": "786215b5-e1ca-417f-80d9-5b087c6118ce",
     "createdAt": "2025-03-24T14:52:35.749Z",
-    "updatedAt": "2025-03-24T14:52:35.749Z"
+    "updatedAt": "2025-03-24T14:52:35.749Z",
+    "lastModified": "2025-03-24T14:52:35.749Z",
+    "isDeleted": false
   },
   "items": [
     {
@@ -39,5 +41,8 @@
     "bic": "BCOMPTPL"
   },
   "is_paid": true,
-  "status": null
+  "status": "paid",
+  "lastModified": "2025-10-26T20:39:45.882Z",
+  "isDeleted": false,
+  "isRectified": false
 }

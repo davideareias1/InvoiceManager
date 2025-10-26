@@ -1,21 +1,15 @@
 'use client';
 
 import { syncWithDrive, isSyncInProgress } from './syncEngine';
-import { getSyncState, hasDataChanged, isSyncEnabled } from './syncState';
+import { getSyncState, isSyncEnabled } from './syncState';
 import { isOnline } from './networkMonitor';
 import { SyncProgress, SyncResult } from './types';
-import {
-    loadInvoicesFromFiles,
-    loadCustomersFromFiles,
-    loadProductsFromFiles,
-    loadCompanyInfoFromFile,
-} from '../filesystem/fileSystemStorage';
 
-const SYNC_INTERVAL_MS = 10000; // 10 seconds
+const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes - periodic full sync to catch remote changes
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 5000; // 5 seconds
 
-let syncTimer: NodeJS.Timeout | null = null;
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let retryCount = 0;
 let isSchedulerRunning = false;
 let lastSyncAttempt: Date | null = null;
@@ -31,11 +25,10 @@ let onSyncError: ((error: Error) => void) | null = null;
  */
 export function startSyncScheduler(): void {
     if (isSchedulerRunning) {
-        console.log('Sync scheduler already running');
+        console.log('✅ Sync scheduler already running');
         return;
     }
 
-    console.log('Starting sync scheduler...');
     isSchedulerRunning = true;
     scheduleNextCheck();
 }
@@ -44,7 +37,12 @@ export function startSyncScheduler(): void {
  * Stop the periodic sync scheduler
  */
 export function stopSyncScheduler(): void {
-    console.log('Stopping sync scheduler...');
+    if (!isSchedulerRunning && !syncTimer) {
+        // Already stopped, no need to log
+        return;
+    }
+    
+    console.log('⏹️ Stopping sync scheduler...');
     isSchedulerRunning = false;
     
     if (syncTimer) {
@@ -83,7 +81,6 @@ function scheduleNextCheck(): void {
 async function performSyncCheck(): Promise<SyncResult | null> {
     // Don't check if sync is already in progress
     if (isSyncInProgress()) {
-        console.log('Sync already in progress, skipping check');
         return null;
     }
 
@@ -97,17 +94,10 @@ async function performSyncCheck(): Promise<SyncResult | null> {
         return null;
     }
 
-    // Check if data has changed
+    // Periodic sync runs every 5 minutes to catch remote changes from other devices
+    // Individual file uploads happen immediately on save (not waiting for this)
     try {
-        const currentData = await loadCurrentData();
-        const changed = hasDataChanged(currentData);
-
-        if (!changed) {
-            // No changes detected
-            return null;
-        }
-
-        console.log('Changes detected, starting sync...');
+        console.log('🔄 Periodic sync (checking for remote changes)...');
         lastSyncAttempt = new Date();
 
         // Notify sync start
@@ -121,7 +111,7 @@ async function performSyncCheck(): Promise<SyncResult | null> {
         if (result.success) {
             retryCount = 0; // Reset retry count on success
             onSyncComplete?.(result);
-            console.log('Sync completed successfully', result.stats);
+            console.log('✅ Synced:', result.stats);
         } else {
             handleSyncError(result.error);
         }
@@ -156,34 +146,6 @@ function handleSyncError(error: Error | undefined): void {
     }
 }
 
-/**
- * Load current data for change detection
- */
-async function loadCurrentData(): Promise<any> {
-    try {
-        const [invoices, customers, products, companyInfo] = await Promise.all([
-            loadInvoicesFromFiles().catch(() => []),
-            loadCustomersFromFiles().catch(() => []),
-            loadProductsFromFiles().catch(() => []),
-            loadCompanyInfoFromFile().catch(() => null),
-        ]);
-
-        return {
-            invoices,
-            customers,
-            products,
-            companyInfo,
-        };
-    } catch (error) {
-        console.error('Error loading current data:', error);
-        return {
-            invoices: [],
-            customers: [],
-            products: [],
-            companyInfo: null,
-        };
-    }
-}
 
 /**
  * Register callback for sync start

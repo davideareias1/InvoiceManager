@@ -1,0 +1,47 @@
+{
+  "invoice_date": "2025-10-01",
+  "due_date": "2025-10-15",
+  "issuer": {
+    "name": "Davide Figueiredo Areias",
+    "address": "Königsberger Straße",
+    "city": "Tübingen 72072"
+  },
+  "customer": {
+    "id": "3968d1b1-fd36-4d9f-9b2f-807192e143ef",
+    "name": "Jochen Frank Motorgeräte Holder",
+    "address": "Eisenbahnstraße 26, 73630",
+    "city": "Remshalden",
+    "hourlyRate": 40,
+    "lastModified": "2025-09-21T18:29:31.968Z",
+    "isDeleted": false,
+    "createdAt": "2025-09-21T18:28:55.640Z",
+    "updatedAt": "2025-09-21T18:29:31.968Z"
+  },
+  "items": [
+    {
+      "name": "Hours September 2025",
+      "quantity": 37,
+      "price": 40,
+      "description": "Softwareentwicklung – Jochen Frank Motorgeräte Holder (Abrechnung nach Stunden)"
+    }
+  ],
+  "total": 1480,
+  "bank_details": {
+    "name": "Millennium bcp",
+    "iban": "PT50003300004526488597405",
+    "bic": "BCOMPTPL"
+  },
+  "tax_rate": 0,
+  "notes": "",
+  "is_paid": true,
+  "lastModified": "2025-10-10T13:32:13.410Z",
+  "isDeleted": false,
+  "isRectified": false,
+  "tax_exemption_reason": "Gemäß § 19 UStG keine Umsatzsteuer (Kleinunternehmerregelung)",
+  "client_name": "Jochen Frank Motorgeräte Holder",
+  "client_address": "Eisenbahnstraße 26, 73630\nRemshalden",
+  "client_vat_id": "",
+  "invoice_number": "012",
+  "id": "4fa1ebed-9ba9-4b4b-be68-7582baa070b7",
+  "status": "paid"
+}

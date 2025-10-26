@@ -22,7 +22,9 @@
     "number": "",
     "id": "786215b5-e1ca-417f-80d9-5b087c6118ce",
     "createdAt": "2025-03-24T14:52:35.749Z",
-    "updatedAt": "2025-03-24T14:52:35.749Z"
+    "updatedAt": "2025-03-24T14:52:35.749Z",
+    "lastModified": "2025-03-24T14:52:35.749Z",
+    "isDeleted": false
   },
   "items": [
     {
@@ -38,7 +40,9 @@
     "iban": "",
     "bic": ""
   },
-  "is_paid": false,
-  "lastModified": "2025-06-26T16:37:35.189Z",
-  "status": null
+  "is_paid": true,
+  "lastModified": "2025-09-17T18:22:49.837Z",
+  "status": "paid",
+  "isDeleted": false,
+  "isRectified": false
 }

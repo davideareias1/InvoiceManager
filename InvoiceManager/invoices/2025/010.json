@@ -21,9 +21,10 @@
     "address": "Vor dem Kreuzberg 17, Tübingen",
     "city": "72070",
     "number": "",
-    "lastModified": "",
+    "lastModified": "2025-07-03T13:23:56.947Z",
     "createdAt": "2025-07-03T13:23:56.947Z",
-    "updatedAt": "2025-07-03T13:23:56.947Z"
+    "updatedAt": "2025-07-03T13:23:56.947Z",
+    "isDeleted": false
   },
   "items": [
     {
@@ -39,9 +40,9 @@
     "iban": "PT50003300004526488597405",
     "bic": "BCOMPTPL"
   },
-  "is_paid": false,
-  "lastModified": "2025-09-03T17:08:12.954Z",
+  "is_paid": true,
+  "lastModified": "2025-09-15T13:17:26.399Z",
   "isRectified": false,
   "isDeleted": false,
-  "status": null
+  "status": "paid"
 }

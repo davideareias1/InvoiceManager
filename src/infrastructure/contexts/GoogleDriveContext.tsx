@@ -34,7 +34,6 @@ import {
     getSyncState,
     setSyncEnabled,
     isSyncEnabled as checkSyncEnabled,
-    isDataSourceSelected,
 } from '../sync/syncState';
 import { SyncProgress, SyncResult } from '../sync/types';
 
@@ -159,6 +158,13 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
                 const syncEnabled = checkSyncEnabled();
                 setIsSyncEnabledState(syncEnabled);
                 
+                // Auto-enable sync if authenticated but sync not enabled yet
+                if (authStatus && !syncEnabled) {
+                    console.log('Auto-enabling sync for authenticated user');
+                    setSyncEnabled(true);
+                    setIsSyncEnabledState(true);
+                }
+                
                 // Load last sync time from sync state
                 const syncState = getSyncState();
                 if (syncState.lastSyncTimestamp) {
@@ -181,8 +187,13 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
     }, []); // Only run once on mount
 
     // Start/stop sync scheduler based on sync enabled and authentication
+    // No data source selection needed - sync engine automatically merges using last-write-wins
     useEffect(() => {
-        if (isSyncEnabled && isAuthenticated && isDataSourceSelected()) {
+        // Only start if both conditions are met
+        if (isSyncEnabled && isAuthenticated) {
+            console.log('✅ Sync conditions met: isSyncEnabled=true, isAuthenticated=true');
+            console.log('Starting sync scheduler...');
+            
             // Register sync callbacks
             onSyncStarted(() => {
                 setIsSyncing(true);
@@ -208,16 +219,21 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
                 setIsSyncing(false);
             });
 
-            // Start the sync scheduler
+            // Start the sync scheduler (runs every 5 minutes)
             startSyncScheduler();
-            console.log('Sync scheduler started');
+            console.log('✅ Sync: instant upload on save, periodic download every 5min');
+
+            // Trigger immediate sync on startup to pull any changes from Drive
+            // This ensures we get changes made on other devices
+            triggerImmediateSync();
 
             return () => {
                 stopSyncScheduler();
-                console.log('Sync scheduler stopped');
+                console.log('Sync scheduler stopped (cleanup)');
             };
         } else {
-            stopSyncScheduler();
+            // Log why sync is not starting
+            console.log(`⏸️ Sync not starting: isSyncEnabled=${isSyncEnabled}, isAuthenticated=${isAuthenticated}`);
         }
     }, [isSyncEnabled, isAuthenticated]);
 
@@ -272,6 +288,10 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
             if (authStatus) {
                 setConnectionStatusMessage('Connected');
                 setIsBackupEnabled(true); // Automatically enable backup after successful auth
+                
+                // Automatically enable sync after successful auth
+                handleSetSyncEnabled(true);
+                console.log('Sync automatically enabled after authentication');
             } else {
                 setConnectionStatusMessage('Authorization failed');
                 throw new Error('Authorization failed');
@@ -358,10 +378,6 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
 
         if (!isOnline) {
             throw new Error('Cannot sync while offline');
-        }
-
-        if (!isDataSourceSelected()) {
-            throw new Error('Data source not selected. Please select a data source first.');
         }
 
         try {

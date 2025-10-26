@@ -21,9 +21,10 @@
     "address": "Vor dem Kreuzberg 17, Tübingen",
     "city": "72070",
     "number": "",
-    "lastModified": "",
+    "lastModified": "2025-07-03T13:23:56.947Z",
     "createdAt": "2025-07-03T13:23:56.947Z",
-    "updatedAt": "2025-07-03T13:23:56.947Z"
+    "updatedAt": "2025-07-03T13:23:56.947Z",
+    "isDeleted": false
   },
   "items": [
     {
@@ -43,5 +44,5 @@
   "lastModified": "2025-08-15T11:42:21.177Z",
   "isRectified": false,
   "isDeleted": false,
-  "status": null
+  "status": "paid"
 }

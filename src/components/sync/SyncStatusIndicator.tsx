@@ -124,8 +124,8 @@ function getStatusDetails(status: SyncStatusType, timeAgo: string) {
     switch (status) {
         case 'syncing':
             return {
-                icon: Loader2,
-                color: 'animate-spin text-blue-600 border-blue-600',
+                icon: Cloud,
+                color: 'text-blue-600 border-blue-600',
                 label: 'Syncing',
                 description: 'Synchronizing with Google Drive...',
             };
