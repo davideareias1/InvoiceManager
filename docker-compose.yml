@@ -18,6 +18,7 @@ services:
       - traefik.http.routers.accounting.rule=Host(`accounting.areias.it`)
       - traefik.http.routers.accounting.entrypoints=websecure
       - traefik.http.routers.accounting.tls.certresolver=le
+      - traefik.http.routers.accounting.middlewares=simple-auth@docker
       - traefik.http.services.accounting.loadbalancer.server.port=3000
       - traefik.docker.network=traefik_web
     healthcheck:
