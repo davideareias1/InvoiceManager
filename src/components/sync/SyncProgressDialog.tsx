@@ -31,7 +31,7 @@ export function SyncProgressDialog({ isOpen, progress }: SyncProgressDialogProps
 
     return (
         <Dialog open={isOpen}>
-            <DialogContent className="sm:max-w-[425px]" hideCloseButton>
+            <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                     <DialogTitle>Synchronizing Data</DialogTitle>
                     <DialogDescription>

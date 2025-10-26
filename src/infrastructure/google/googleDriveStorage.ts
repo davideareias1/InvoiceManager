@@ -961,6 +961,8 @@ export async function downloadAllDataFromDrive(): Promise<{
     customers: CustomerData[];
     products: ProductData[];
     companyInfo: CompanyInfo | null;
+    timesheets: any[];
+    taxSettings: any | null;
 }> {
     if (!await isGoogleDriveAuthenticated()) {
         throw new Error('Not authenticated with Google Drive');
@@ -993,6 +995,8 @@ export async function downloadAllDataFromDrive(): Promise<{
             customers: customersList,
             products: productsList,
             companyInfo,
+            timesheets: [],
+            taxSettings: null,
         };
     } catch (error) {
         console.error('Error downloading data from Google Drive:', error);

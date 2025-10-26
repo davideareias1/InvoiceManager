@@ -1,0 +1,38 @@
+# Development Docker Compose for InvoiceManager with hot reload
+services:
+  invoicemanager-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: invoicemanager-dev
+    restart: unless-stopped
+    volumes:
+      # Mount source code for hot reload
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./next.config.js:/app/next.config.js
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./tailwind.config.js:/app/tailwind.config.js
+      - ./postcss.config.js:/app/postcss.config.js
+      - ./components.json:/app/components.json
+      # Exclude node_modules to avoid conflicts
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+    networks:
+      - traefik_web
+    labels:
+      - traefik.enable=true
+      # Main site routing
+      - traefik.http.routers.accounting-dev.rule=Host(`accounting.areias.it`)
+      - traefik.http.routers.accounting-dev.entrypoints=websecure
+      - traefik.http.routers.accounting-dev.tls.certresolver=le
+      - traefik.http.services.accounting-dev.loadbalancer.server.port=3000
+      - traefik.docker.network=traefik_web
+
+networks:
+  traefik_web:
+    name: traefik_web
+    external: true
+
