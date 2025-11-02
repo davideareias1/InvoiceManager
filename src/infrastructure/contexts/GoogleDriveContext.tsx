@@ -25,11 +25,13 @@ import {
     startSyncScheduler,
     stopSyncScheduler,
     triggerImmediateSync,
+    setSyncEngine,
     onSyncStarted,
     onSyncCompleted,
     onSyncProgressUpdate,
     onSyncErrorOccurred,
 } from '../sync/syncScheduler';
+import { syncWithDrive, isSyncInProgress as isDriveSyncInProgress } from '../sync/syncEngine';
 import {
     getSyncState,
     setSyncEnabled,
@@ -219,7 +221,8 @@ export function GoogleDriveProvider({ children }: GoogleDriveProviderProps) {
                 setIsSyncing(false);
             });
 
-            // Start the sync scheduler (runs every 5 minutes)
+            // Select Drive engine for scheduler and start (runs every 5 minutes)
+            setSyncEngine(syncWithDrive, isDriveSyncInProgress);
             startSyncScheduler();
             console.log('✅ Sync: instant upload on save, periodic download every 5min');
 

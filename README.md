@@ -68,6 +68,21 @@ InvoiceManager is a comprehensive solution for small businesses and freelancers 
 
 4. Open your browser and navigate to `http://localhost:3000`
 
+### Nextcloud configuration (WebDAV)
+
+Create a `.env.local` file in the project root with the following variables:
+
+```
+NEXTCLOUD_BASE_URL=https://cloud.areias.it
+NEXTCLOUD_USERNAME=your_username
+NEXTCLOUD_APP_PASSWORD=your_app_password
+# Root directory inside Nextcloud Files where data is stored
+# Example: AreiasIT/Accounting/InvoiceManager
+NEXTCLOUD_ROOT_DIR=AreiasIT/Accounting/InvoiceManager
+```
+
+Note: Use a Nextcloud app password instead of your primary password. The credentials are used server-side only via API routes and are never exposed to the browser.
+
 ### Building for Production
 
 ```bash
@@ -84,6 +99,10 @@ yarn start
 
 1. **Grant Directory Access**: On first launch, you'll need to select a directory where the application will store your invoice data.
 2. **Enter Company Information**: Configure your company details, logo, and default settings.
+3. **Connect Cloud Provider**:
+   - Google Drive: Settings → Sync → Connect to Google Drive
+   - Nextcloud: Settings → Sync → Connect to Nextcloud (requires `.env.local` as described above)
+   - Enable Auto-sync to keep data synchronized periodically
 
 ### Creating Invoices
 

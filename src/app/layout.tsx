@@ -4,6 +4,7 @@ import './globals.css'
 import { FileSystemProvider } from '../infrastructure/contexts/FileSystemContext'
 import { CompanyProvider } from '../infrastructure/contexts/CompanyContext'
 import { GoogleDriveProvider } from '../infrastructure/contexts/GoogleDriveContext'
+import { NextcloudProvider } from '../infrastructure/contexts/NextcloudContext'
 import { Navigation } from '../components/Navigation'
 import { FolderAccessGate } from '../components/FolderAccessGate'
 import { TaxSettingsProvider } from '@/infrastructure/contexts/TaxSettingsContext'
@@ -29,6 +30,7 @@ export default function RootLayout({
             <body className={inter.className + " h-screen overflow-hidden"}>
                 <FileSystemProvider>
                     <GoogleDriveProvider>
+                        <NextcloudProvider>
                         <CompanyProvider>
                             <TaxSettingsProvider>
                                 <TimeAnalyticsProvider>
@@ -43,6 +45,7 @@ export default function RootLayout({
                                 </TimeAnalyticsProvider>
                             </TaxSettingsProvider>
                         </CompanyProvider>
+                        </NextcloudProvider>
                     </GoogleDriveProvider>
                 </FileSystemProvider>
             </body>

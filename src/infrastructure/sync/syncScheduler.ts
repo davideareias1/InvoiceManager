@@ -1,6 +1,6 @@
 'use client';
 
-import { syncWithDrive, isSyncInProgress } from './syncEngine';
+import { syncWithDrive, isSyncInProgress as isDriveSyncInProgress } from './syncEngine';
 import { getSyncState, isSyncEnabled } from './syncState';
 import { isOnline } from './networkMonitor';
 import { SyncProgress, SyncResult } from './types';
@@ -19,6 +19,17 @@ let onSyncStart: (() => void) | null = null;
 let onSyncComplete: ((result: SyncResult) => void) | null = null;
 let onSyncProgress: ((progress: SyncProgress) => void) | null = null;
 let onSyncError: ((error: Error) => void) | null = null;
+
+// Pluggable sync engine (default: Google Drive)
+type EngineFn = (onProgress?: (progress: SyncProgress) => void) => Promise<SyncResult>;
+type InProgressFn = () => boolean;
+let syncEngine: EngineFn = syncWithDrive;
+let getIsInProgress: InProgressFn = isDriveSyncInProgress;
+
+export function setSyncEngine(engine: EngineFn, isInProgress: InProgressFn) {
+    syncEngine = engine;
+    getIsInProgress = isInProgress;
+}
 
 /**
  * Start the periodic sync scheduler
@@ -80,7 +91,7 @@ function scheduleNextCheck(): void {
  */
 async function performSyncCheck(): Promise<SyncResult | null> {
     // Don't check if sync is already in progress
-    if (isSyncInProgress()) {
+    if (getIsInProgress()) {
         return null;
     }
 
@@ -104,7 +115,7 @@ async function performSyncCheck(): Promise<SyncResult | null> {
         onSyncStart?.();
 
         // Perform sync
-        const result = await syncWithDrive(progress => {
+        const result = await syncEngine(progress => {
             onSyncProgress?.(progress);
         });
 

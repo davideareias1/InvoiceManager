@@ -8,6 +8,7 @@ import { Card } from '../ui/card';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Loader2, RefreshCw, Cloud, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useGoogleDrive } from '../../infrastructure/contexts/GoogleDriveContext';
+import { useNextcloud } from '../../infrastructure/contexts/NextcloudContext';
 
 export default function SyncSettings() {
     const {
@@ -22,6 +23,19 @@ export default function SyncSettings() {
         manualSync,
         setSyncEnabled,
     } = useGoogleDrive();
+
+    const {
+        isConfigured: isNcConfigured,
+        isSyncEnabled: isNcSyncEnabled,
+        isOnline: isNcOnline,
+        lastSyncTime: ncLastSyncTime,
+        syncError: ncSyncError,
+        isSyncing: isNcSyncing,
+        requestPermission: ncConnect,
+        signOut: ncDisconnect,
+        manualSync: ncManualSync,
+        setSyncEnabled: setNcSyncEnabled,
+    } = useNextcloud();
 
     const [isProcessing, setIsProcessing] = useState(false);
     const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
@@ -79,6 +93,55 @@ export default function SyncSettings() {
         } catch (error: any) {
             console.error('Error during manual sync:', error);
             setStatusMessage({ type: 'error', text: error.message || 'Failed to sync' });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleNcConnect = async () => {
+        setIsProcessing(true);
+        setStatusMessage(null);
+        try {
+            await ncConnect();
+            setStatusMessage({ type: 'success', text: 'Connected to Nextcloud!' });
+        } catch (e) {
+            setStatusMessage({ type: 'error', text: 'Failed to connect to Nextcloud' });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleNcDisconnect = async () => {
+        setIsProcessing(true);
+        setStatusMessage(null);
+        try {
+            await ncDisconnect();
+            setNcSyncEnabled(false);
+            setStatusMessage({ type: 'info', text: 'Disconnected from Nextcloud' });
+        } catch (e) {
+            setStatusMessage({ type: 'error', text: 'Failed to disconnect from Nextcloud' });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleNcToggleSync = async (enabled: boolean) => {
+        try {
+            setNcSyncEnabled(enabled);
+            setStatusMessage({ type: 'success', text: enabled ? 'Auto-sync enabled (Nextcloud)' : 'Auto-sync disabled (Nextcloud)' });
+        } catch {
+            setStatusMessage({ type: 'error', text: 'Failed to toggle sync' });
+        }
+    };
+
+    const handleNcManualSync = async () => {
+        setIsProcessing(true);
+        setStatusMessage(null);
+        try {
+            await ncManualSync();
+            setStatusMessage({ type: 'success', text: 'Manual sync (Nextcloud) completed successfully!' });
+        } catch (error: any) {
+            setStatusMessage({ type: 'error', text: error?.message || 'Failed to sync' });
         } finally {
             setIsProcessing(false);
         }
@@ -149,6 +212,95 @@ export default function SyncSettings() {
                     </div>
                 </div>
             </Card>
+
+            {/* Nextcloud Connection */}
+            <Card className="p-6">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Cloud className="h-5 w-5" />
+                    Nextcloud Connection
+                </h3>
+
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="font-medium">
+                                Status: {isNcConfigured ? (
+                                    <span className="text-green-600">Connected</span>
+                                ) : (
+                                    <span className="text-gray-500">Not Connected</span>
+                                )}
+                            </p>
+                            {!isNcOnline && (
+                                <p className="text-sm text-amber-600">Currently offline</p>
+                            )}
+                        </div>
+                        <Button
+                            onClick={isNcConfigured ? handleNcDisconnect : handleNcConnect}
+                            disabled={isProcessing}
+                            variant={isNcConfigured ? 'outline' : 'default'}
+                        >
+                            {isProcessing ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Processing...
+                                </>
+                            ) : isNcConfigured ? (
+                                'Disconnect'
+                            ) : (
+                                'Connect to Nextcloud'
+                            )}
+                        </Button>
+                    </div>
+                </div>
+            </Card>
+
+            {/* Nextcloud Sync Settings */}
+            {isNcConfigured && (
+                <Card className="p-6">
+                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                        <RefreshCw className="h-5 w-5" />
+                        Automatic Sync (Nextcloud)
+                    </h3>
+
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                                <Label htmlFor="auto-sync-nc">Enable Automatic Sync</Label>
+                                <p className="text-sm text-muted-foreground">Automatically sync changes every 5 minutes</p>
+                            </div>
+                            <Switch id="auto-sync-nc" checked={isNcSyncEnabled} onCheckedChange={handleNcToggleSync} disabled={!isNcOnline} />
+                        </div>
+
+                        <div className="pt-4 border-t">
+                            <div className="flex items-center justify-between mb-2">
+                                <div>
+                                    <p className="text-sm font-medium">Last Sync</p>
+                                    <p className="text-sm text-muted-foreground">{formatLastSyncTime(ncLastSyncTime)}</p>
+                                </div>
+                                <Button onClick={handleNcManualSync} disabled={isProcessing || isNcSyncing || !isNcOnline} size="sm" variant="outline">
+                                    {isNcSyncing ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Syncing...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <RefreshCw className="mr-2 h-4 w-4" />
+                                            Sync Now
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
+                            {ncSyncError && (
+                                <div className="flex items-center gap-2 text-sm text-destructive mt-2">
+                                    <AlertCircle className="h-4 w-4" />
+                                    <span>{ncSyncError.message}</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </Card>
+            )}
 
             {/* Sync Settings */}
             {isAuthenticated && (
