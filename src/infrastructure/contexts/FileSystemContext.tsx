@@ -60,21 +60,6 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [currentFolderName, setCurrentFolderName] = useState<string | null>(null);
     
-    // For Google Drive backup - this will be passed to child context components
-    const [googleDriveBackup, setGoogleDriveBackup] = useState<{
-        saveInvoice: ((invoice: Invoice) => Promise<boolean>) | null;
-        deleteInvoice: ((invoiceNumber: string) => Promise<boolean>) | null;
-        saveCustomer: ((customer: any) => Promise<boolean>) | null;
-        saveProduct: ((product: any) => Promise<boolean>) | null;
-        isBackupEnabled: boolean;
-    }>({
-        saveInvoice: null,
-        deleteInvoice: null,
-        saveCustomer: null,
-        saveProduct: null,
-        isBackupEnabled: false
-    });
-
     // Share directory handle with other utilities
     const shareDirectoryHandle = React.useCallback(async (): Promise<void> => {
         try {
@@ -209,16 +194,6 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
                         return [...prev, savedInvoice];
                     }
                 });
-                
-                // If Google Drive backup is enabled, also save there
-                if (googleDriveBackup.isBackupEnabled && googleDriveBackup.saveInvoice !== null) {
-                    try {
-                        await googleDriveBackup.saveInvoice(savedInvoice);
-                    } catch (error) {
-                        console.error("Error backing up invoice to Google Drive:", error);
-                        // We don't want to fail the operation if just backup fails
-                    }
-                }
             }
 
             return !!savedInvoice;
@@ -243,16 +218,6 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
                     const savedInvoice = await saveInvoiceToUtils(invoice);
                     if (savedInvoice) {
                         savedInvoices.push(savedInvoice);
-                        
-                        if (googleDriveBackup.isBackupEnabled && googleDriveBackup.saveInvoice !== null) {
-                            // Also backup to Google Drive if enabled
-                            try {
-                                await googleDriveBackup.saveInvoice(savedInvoice);
-                            } catch (error) {
-                                console.error("Error backing up invoice to Google Drive:", error);
-                                // We don't want to fail the operation if just backup fails
-                            }
-                        }
                     } else {
                         success = false;
                     }
@@ -303,16 +268,6 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
             if (success) {
                 // Update local state
                 setInvoices(prevInvoices => prevInvoices.filter(inv => inv.invoice_number !== invoiceNumber));
-                
-                // Also delete from Google Drive if backup is enabled
-                if (googleDriveBackup.isBackupEnabled && googleDriveBackup.deleteInvoice !== null) {
-                    try {
-                        await googleDriveBackup.deleteInvoice(invoiceNumber);
-                    } catch (error) {
-                        console.error("Error deleting invoice from Google Drive backup:", error);
-                        // We don't want to fail the operation if just backup fails
-                    }
-                }
             }
             return success;
         } catch (error) {
@@ -320,25 +275,6 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
             return false;
         }
     };
-
-    // Register Google Drive backup functions passed from the GoogleDriveProvider
-    // This allows the GoogleDriveContext to register its functions with FileSystemContext
-    const registerGoogleDriveBackup = (backupFunctions: {
-        saveInvoice: ((invoice: Invoice) => Promise<boolean>) | null;
-        deleteInvoice: ((invoiceNumber: string) => Promise<boolean>) | null;
-        saveCustomer: ((customer: any) => Promise<boolean>) | null;
-        saveProduct: ((product: any) => Promise<boolean>) | null;
-        isBackupEnabled: boolean;
-    }) => {
-        // Only update state if the backup enabled status has actually changed
-        // We can't compare the functions directly as they will always be different references
-        if (backupFunctions.isBackupEnabled !== googleDriveBackup.isBackupEnabled) {
-            setGoogleDriveBackup(backupFunctions);
-        }
-    };
-
-    // Make registerGoogleDriveBackup available to child contexts
-    const childContextValue = { registerGoogleDriveBackup };
 
     const value: FileSystemContextType = {
         isSupported,
@@ -361,31 +297,7 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
 
     return (
         <FileSystemContext.Provider value={value}>
-            {/* @ts-ignore - childContextValue is passed to GoogleDriveProvider through context API */}
-            <FileSystemChildContext.Provider value={childContextValue}>
                 {children}
-            </FileSystemChildContext.Provider>
         </FileSystemContext.Provider>
     );
-}
-
-// Export a child context for use by the GoogleDriveProvider
-export interface FileSystemChildContextType {
-    registerGoogleDriveBackup: (backupFunctions: {
-        saveInvoice: ((invoice: Invoice) => Promise<boolean>) | null;
-        deleteInvoice: ((invoiceNumber: string) => Promise<boolean>) | null;
-        saveCustomer: ((customer: any) => Promise<boolean>) | null;
-        saveProduct: ((product: any) => Promise<boolean>) | null;
-        isBackupEnabled: boolean;
-    }) => void;
-}
-
-const FileSystemChildContext = createContext<FileSystemChildContextType | undefined>(undefined);
-
-export function useFileSystemChild() {
-    const context = useContext(FileSystemChildContext);
-    if (context === undefined) {
-        throw new Error('useFileSystemChild must be used within a FileSystemProvider');
-    }
-    return context;
 } 

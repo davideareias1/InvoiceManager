@@ -4,8 +4,6 @@ import { CompanyInfo } from '../../domain/models';
 import { loadCompanyInfoFromFile, saveCompanyInfoToFile } from '../filesystem/fileSystemStorage';
 import { DEFAULT_COMPANY_INFO } from '../contexts/CompanyContext';
 import type { CompanyRepository } from '../../domain/models';
-import { markDataDirty } from '../sync/syncState';
-import { saveCompanyInfoToGoogleDrive } from '../google/googleDriveStorage';
 
 let cachedCompanyInfo: CompanyInfo | null = null;
 
@@ -35,8 +33,6 @@ export async function saveCompanyInfo(info: Partial<CompanyInfo>): Promise<Compa
 
     cachedCompanyInfo = updatedInfo;
     await saveCompanyInfoToFile(updatedInfo);
-    await saveCompanyInfoToGoogleDrive(updatedInfo);
-    markDataDirty();
     return updatedInfo;
 }
 

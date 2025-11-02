@@ -3,8 +3,6 @@
 import { TimeEntry, TimeSheetMonth, TimeTrackingRepository } from '../../domain/models';
 import * as XLSX from 'xlsx';
 import { getSavedDirectoryHandle, verifyHandlePermission } from '../filesystem/fileSystemStorage';
-import { markDataDirty } from '../sync/syncState';
-import { uploadTimesheetToDrive } from '../google/googleDriveStorage';
 
 // Directory structure: timesheets/<sanitized-customer-name>/<year>/<customerName-year-month.xlsx>
 const TIMESHEETS_DIRECTORY = 'timesheets';
@@ -225,15 +223,6 @@ export const saveMonth = async (ts: TimeSheetMonth): Promise<TimeSheetMonth> => 
     await writable.write(new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
     await writable.close();
     
-    // Upload directly to Drive (don't wait for sync scheduler)
-    try {
-        await uploadTimesheetToDrive(ts.customerName, ts.year, ts.month, fileHandle);
-    } catch (error) {
-        console.error('Failed to upload timesheet to Drive:', error);
-        // Continue anyway - local save succeeded
-    }
-    
-    markDataDirty();
     return { ...ts, lastModified: new Date().toISOString() };
 };
 

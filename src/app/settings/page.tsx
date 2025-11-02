@@ -11,7 +11,6 @@ import CompanySettings from '@/components/settings/CompanySettings';
 import BusinessSettings from '@/components/settings/BusinessSettings';
 import BankingSettings from '@/components/settings/BankingSettings';
 import TaxSettings from '@/components/settings/TaxSettings';
-import SyncSettings from '@/components/settings/SyncSettings';
 
 interface ValidationErrors {
     [key: string]: string;
@@ -193,12 +192,11 @@ export default function SettingsPage() {
 
             {/* ===== TABS NAVIGATION ===== */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="h-[calc(100%-120px)]">
-                <TabsList className="grid w-full grid-cols-5 mb-4">
+                <TabsList className="grid w-full grid-cols-4 mb-4">
                     <TabsTrigger value="company">Company</TabsTrigger>
                     <TabsTrigger value="business">Business</TabsTrigger>
                     <TabsTrigger value="banking">Banking</TabsTrigger>
                     <TabsTrigger value="taxes">Taxes</TabsTrigger>
-                    <TabsTrigger value="sync">Sync</TabsTrigger>
                 </TabsList>
 
                 {/* ===== COMPANY TAB ===== */}
@@ -239,11 +237,6 @@ export default function SettingsPage() {
                         onInputChange={handleInputChange}
                         onTaxInputChange={handleTaxInputChange}
                     />
-                </TabsContent>
-
-                {/* ===== SYNC TAB ===== */}
-                <TabsContent value="sync" className="h-full overflow-auto">
-                    <SyncSettings />
                 </TabsContent>
             </Tabs>
         </div>

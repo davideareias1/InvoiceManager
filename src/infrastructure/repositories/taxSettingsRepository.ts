@@ -2,8 +2,6 @@
 
 import { PersonalTaxSettings, TaxSettingsRepository } from '@/domain/models';
 import { loadPersonalTaxSettingsFromFile, savePersonalTaxSettingsToFile } from '@/infrastructure/filesystem/fileSystemStorage';
-import { markDataDirty } from '../sync/syncState';
-import { saveTaxSettingsToGoogleDrive } from '../google/googleDriveStorage';
 
 let cachedSettings: PersonalTaxSettings | null = null;
 
@@ -34,8 +32,6 @@ export async function savePersonalTaxSettings(settings: Partial<PersonalTaxSetti
     const updated: PersonalTaxSettings = { ...base, ...settings, lastModified: now };
     cachedSettings = updated;
     await savePersonalTaxSettingsToFile(updated);
-    await saveTaxSettingsToGoogleDrive(updated);
-    markDataDirty();
     return updated;
 }
 

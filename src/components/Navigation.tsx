@@ -3,8 +3,6 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from './ui/button';
-import { SyncStatusIndicator } from './sync/SyncStatusIndicator';
-import { useGoogleDrive } from '../infrastructure/contexts/GoogleDriveContext';
 
 const navigationItems = [
     { href: '/', label: 'Home' },
@@ -18,7 +16,6 @@ const navigationItems = [
 
 export function Navigation() {
     const pathname = usePathname();
-    const { isSyncing, lastSyncTime, isOnline, syncError, isSyncEnabled } = useGoogleDrive();
 
     return (
         <nav className="border-b border-neutral-200 bg-white">
@@ -28,14 +25,6 @@ export function Navigation() {
                         <Link href="/" className="text-xl font-bold text-neutral-900">
                             InvoiceManager
                         </Link>
-                        {isSyncEnabled && (
-                            <SyncStatusIndicator
-                                isSyncing={isSyncing}
-                                lastSyncTime={lastSyncTime}
-                                isOnline={isOnline}
-                                syncError={syncError}
-                            />
-                        )}
                     </div>
                     <div className="flex items-center space-x-1">
                         {navigationItems.map((item) => (

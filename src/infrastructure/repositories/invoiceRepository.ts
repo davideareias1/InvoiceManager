@@ -3,11 +3,8 @@
 import { Invoice, InvoiceStatus, InvoiceRepository } from '../../domain/models';
 import { v4 as uuidv4 } from 'uuid';
 import { saveInvoiceToFile, loadInvoicesFromFiles } from '../filesystem/fileSystemStorage';
-import { saveInvoiceToGoogleDrive } from '../google/googleDriveStorage';
 import { format, addDays } from 'date-fns';
 import { formatDate } from '../../shared/formatters';
-import { isOnline } from '../sync/networkMonitor';
-import { markDataDirty } from '../sync/syncState';
 
 // Global variable to cache directory handle and invoices
 let directoryHandle: FileSystemDirectoryHandle | null = null;
@@ -83,11 +80,6 @@ export const saveInvoice = async (invoice: Partial<Invoice>): Promise<Invoice> =
         throw new Error('No directory handle available. Please grant file access permissions.');
     }
 
-    // Check online status
-    if (!isOnline()) {
-        throw new Error('Cannot save while offline. Please connect to the internet to make changes.');
-    }
-
     try {
         const now = new Date().toISOString();
         let updatedInvoice: Invoice;
@@ -132,8 +124,6 @@ export const saveInvoice = async (invoice: Partial<Invoice>): Promise<Invoice> =
         }
 
         await saveInvoiceToFile(updatedInvoice);
-        await saveInvoiceToGoogleDrive(updatedInvoice);
-        markDataDirty();
 
         return updatedInvoice;
     } catch (error) {
@@ -150,11 +140,6 @@ export const deleteInvoice = async (id: string): Promise<boolean> => {
         throw new Error('No directory handle available. Please grant file access permissions.');
     }
 
-    // Check online status
-    if (!isOnline()) {
-        throw new Error('Cannot delete while offline. Please connect to the internet to make changes.');
-    }
-
     try {
         const invoiceIndex = cachedInvoices.findIndex(inv => inv.id === id);
         if (invoiceIndex === -1) {
@@ -167,8 +152,6 @@ export const deleteInvoice = async (id: string): Promise<boolean> => {
 
         // Save the updated invoice (marked as deleted)
         await saveInvoiceToFile(deletedInvoice);
-        await saveInvoiceToGoogleDrive(deletedInvoice);
-        markDataDirty();
 
         // Recalculate the counter since we might have deleted a high-numbered invoice
         updateNextInvoiceNumber();
